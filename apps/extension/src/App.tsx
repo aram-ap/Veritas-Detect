@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TrustDial } from './components/TrustDial';
 import { FlaggedContent, type FlaggedSnippet } from './components/FlaggedContent';
 import './index.css';
@@ -23,6 +23,9 @@ function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
+  const [selectedSnippetIndex, setSelectedSnippetIndex] = useState<number | null>(null);
+  const snippetRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -69,10 +72,9 @@ function App() {
   const updateCurrentTabUrl = useCallback(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.url) {
+        console.log('[Veritas] Current tab URL:', tabs[0].url);
         setCurrentUrl(tabs[0].url);
-        // Clear results when switching tabs
-        setResult(null);
-        setError(null);
+        // Don't clear results here - let the cache effect handle it
       }
     });
   }, []);
@@ -82,32 +84,96 @@ function App() {
     updateCurrentTabUrl();
 
     // Re-check auth when the document becomes visible
-    const handleVisibilityChange = () => {
+    // Clear highlights when panel is hidden/closed
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         checkAuth();
         updateCurrentTabUrl();
+      } else if (document.visibilityState === 'hidden') {
+        // Extension panel is closing/hidden - clear highlights
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab.id) {
+            await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_HIGHLIGHTS' });
+            console.log('[Veritas] Cleared highlights on panel close');
+          }
+        } catch (error) {
+          // Tab may have closed or content script not ready - that's ok
+          console.log('[Veritas] Could not clear highlights (tab may be closed)');
+        }
       }
     };
 
-    // Listen for tab switches
+    // Listen for tab switches - cancel analysis when switching tabs
     const handleTabActivated = () => {
+      // Cancel ongoing analysis when switching tabs
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        console.log('[Veritas] Cancelled analysis due to tab switch');
+      }
       updateCurrentTabUrl();
     };
 
-    // Listen for URL changes in the current tab
+    // Listen for URL changes in the current tab - cancel analysis when URL changes
     const handleTabUpdated = (tabId: number, changeInfo: { url?: string }) => {
       if (changeInfo.url) {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs[0]?.id === tabId) {
+            // Cancel ongoing analysis when URL changes
+            if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+              console.log('[Veritas] Cancelled analysis due to URL change');
+            }
             updateCurrentTabUrl();
           }
         });
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    chrome.tabs.onActivated.addListener(handleTabActivated);
-    chrome.tabs.onUpdated.addListener(handleTabUpdated);
+    // Listen for tab removal - cancel analysis if tab is closed
+    const handleTabRemoved = (tabId: number) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id === tabId) {
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            console.log('[Veritas] Cancelled analysis due to tab close');
+          }
+        }
+      });
+    };
+
+    // Listen for messages from content script (e.g., snippet clicked on page)
+    const handleMessage = (message: { action: string; snippetIndex?: number }) => {
+      if (message.action === 'SNIPPET_CLICKED' && typeof message.snippetIndex === 'number') {
+        console.log('[Veritas] Snippet clicked on page:', message.snippetIndex);
+        const snippetIndex = message.snippetIndex;
+        setSelectedSnippetIndex(snippetIndex);
+        // Scroll to the snippet in the extension UI
+        setTimeout(() => {
+          const snippetEl = snippetRefs.current[snippetIndex];
+          if (snippetEl) {
+            snippetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Flash animation
+            snippetEl.style.animation = 'none';
+            setTimeout(() => {
+              snippetEl.style.animation = 'flash-snippet 0.5s ease-in-out';
+            }, 10);
+          }
+        }, 100);
+      }
+    };
+
+    // Clear highlights when extension is about to unload
+    const handleBeforeUnload = async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab.id) {
+          await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_HIGHLIGHTS' });
+        }
+      } catch (error) {
+        // Ignore errors during unload
+      }
+    };
 
     // Poll for auth when unauthenticated (in case user logged in via another tab)
     const interval = setInterval(() => {
@@ -116,10 +182,21 @@ function App() {
       }
     }, 3000);
 
+    // Add all event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    chrome.tabs.onActivated.addListener(handleTabActivated);
+    chrome.tabs.onUpdated.addListener(handleTabUpdated);
+    chrome.tabs.onRemoved.addListener(handleTabRemoved);
+    chrome.runtime.onMessage.addListener(handleMessage);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       chrome.tabs.onActivated.removeListener(handleTabActivated);
       chrome.tabs.onUpdated.removeListener(handleTabUpdated);
+      chrome.tabs.onRemoved.removeListener(handleTabRemoved);
+      chrome.runtime.onMessage.removeListener(handleMessage);
       clearInterval(interval);
     };
   }, [checkAuth, authState, updateCurrentTabUrl]);
@@ -141,6 +218,15 @@ function App() {
   };
 
   const handleAnalyze = async (forceRefresh = true) => {
+    // Cancel any ongoing analysis
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new AbortController for this analysis
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setAnalyzing(true);
     setError(null);
     setResult(null);
@@ -149,6 +235,11 @@ function App() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) {
         throw new Error('No active tab found');
+      }
+
+      // Check if aborted
+      if (abortController.signal.aborted) {
+        throw new Error('Analysis cancelled');
       }
 
       // Request text from content script
@@ -162,13 +253,18 @@ function App() {
           target: { tabId: tab.id },
           files: ['content.js']
         });
-        
+
         // Retry message
         response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_TEXT' });
       }
 
       if (!response || !response.text) {
         throw new Error('Could not extract page content');
+      }
+
+      // Check if aborted
+      if (abortController.signal.aborted) {
+        throw new Error('Analysis cancelled');
       }
 
       console.log('[Veritas] Sending text to API:', response.text.substring(0, 100) + '...');
@@ -186,6 +282,7 @@ function App() {
           url: tab.url,
           forceRefresh
         }),
+        signal: abortController.signal, // Add abort signal
       });
 
       if (!analyzeRes.ok) {
@@ -198,32 +295,97 @@ function App() {
       const data = await analyzeRes.json();
       console.log('[Veritas] API Response:', data); // Debug log
       setResult(data);
-      
+
       // Cache the result locally for this URL
       if (tab.url) {
         chrome.storage.local.set({ [tab.url]: data });
       }
+
+      // Send highlights to content script (non-blocking, don't await)
+      if (data.flagged_snippets && data.flagged_snippets.length > 0 && tab.id) {
+        // Use setTimeout to make this truly non-blocking
+        setTimeout(async () => {
+          try {
+            await chrome.tabs.sendMessage(tab.id!, {
+              action: 'HIGHLIGHT_SNIPPETS',
+              snippets: data.flagged_snippets
+            });
+            console.log('[Veritas] Sent highlights to content script');
+          } catch (highlightError) {
+            console.error('[Veritas] Failed to send highlights:', highlightError);
+          }
+        }, 100); // Small delay to ensure UI updates first
+      }
     } catch (err) {
+      // Don't show error if analysis was cancelled
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('[Veritas] Analysis cancelled');
+        return;
+      }
+      if (err instanceof Error && err.message === 'Analysis cancelled') {
+        console.log('[Veritas] Analysis cancelled');
+        return;
+      }
+
       setError(err instanceof Error ? err.message : 'Analysis failed');
       if (err instanceof Error && err.message.includes('sign in')) {
         setAuthState('unauthenticated');
       }
     } finally {
       setAnalyzing(false);
+      abortControllerRef.current = null;
     }
   };
 
   // Check for cached results when URL changes
   useEffect(() => {
-    if (currentUrl) {
-      chrome.storage.local.get(currentUrl, (items) => {
-        if (items[currentUrl]) {
-          console.log('[Veritas] Found cached result for', currentUrl);
-          setResult(items[currentUrl] as AnalysisResult);
+    if (!currentUrl) return;
+
+    console.log('[Veritas] Checking cache for URL:', currentUrl);
+
+    chrome.storage.local.get(currentUrl, (items) => {
+      if (chrome.runtime.lastError) {
+        console.error('[Veritas] Cache read error:', chrome.runtime.lastError);
+        return;
+      }
+
+      if (items[currentUrl]) {
+        console.log('[Veritas] Found cached result for', currentUrl);
+        const cachedResult = items[currentUrl] as AnalysisResult;
+
+        // Only set result if not currently analyzing
+        if (!analyzing) {
+          setResult(cachedResult);
+          setError(null);
+
+          // Send highlights for cached results (non-blocking)
+          if (cachedResult.flagged_snippets && cachedResult.flagged_snippets.length > 0) {
+            setTimeout(async () => {
+              try {
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (tab.id) {
+                  await chrome.tabs.sendMessage(tab.id, {
+                    action: 'HIGHLIGHT_SNIPPETS',
+                    snippets: cachedResult.flagged_snippets
+                  });
+                  console.log('[Veritas] Sent cached highlights to content script');
+                }
+              } catch (error) {
+                console.error('[Veritas] Failed to send cached highlights:', error);
+              }
+            }, 200);
+          }
         }
-      });
-    }
-  }, [currentUrl]);
+      } else {
+        console.log('[Veritas] No cached result for', currentUrl);
+        // Clear results if no cache found for this URL
+        if (!analyzing) {
+          setResult(null);
+          setError(null);
+        }
+      }
+    });
+  }, [currentUrl, analyzing]);
 
   const getBiasStyle = (bias: string) => {
     const lowerBias = (bias || '').toLowerCase();
@@ -391,7 +553,11 @@ function App() {
             </div>
 
             {/* Flagged Content */}
-            <FlaggedContent snippets={result.flagged_snippets} />
+            <FlaggedContent
+              snippets={result.flagged_snippets}
+              snippetRefs={snippetRefs}
+              selectedSnippetIndex={selectedSnippetIndex}
+            />
 
             {/* Info about score */}
             <div className="mt-6 w-full bg-slate-800/30 rounded-xl p-4 border border-slate-700/50">
@@ -409,9 +575,20 @@ function App() {
 
             {/* New analysis button */}
             <button
-              onClick={() => {
+              onClick={async () => {
                 setResult(null);
                 setError(null);
+                setSelectedSnippetIndex(null);
+
+                // Clear highlights on the page
+                try {
+                  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                  if (tab.id) {
+                    await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_HIGHLIGHTS' });
+                  }
+                } catch (clearError) {
+                  console.error('[Veritas] Failed to clear highlights:', clearError);
+                }
               }}
               className="mt-6 w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-gray-300 font-medium rounded-xl transition-all duration-200 border border-slate-700"
             >
