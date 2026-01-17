@@ -93,7 +93,7 @@ class GeminiExplainer:
                             "url": <source URL>,
                             "snippet": <relevant excerpt>
                         }}
-                    ] (optional - include if you used Google Search to verify this)
+                    ] (REQUIRED if claiming something is false, doesn't exist, or never happened)
                 }}
             ],
             "verifiable_claims": [
@@ -110,6 +110,21 @@ class GeminiExplainer:
         - "Logical Fallacy": Flawed reasoning (ad hominem, straw man, etc.).
         - "Bias": Assess the political leaning based on tone, framing, and omission.
 
+        CRITICAL RULES FOR NEGATIVE CLAIMS:
+        - NEVER claim something "doesn't exist", "is false", "never happened", or "is fake" without FIRST verifying via Google Search
+        - If you claim something doesn't exist or is false, you MUST include sources in the flagged snippet
+        - If you cannot find sources to verify a negative claim, use softer language: "could not be verified", "no evidence found in search", "unconfirmed"
+        - When in doubt about existence or truth, SEARCH FIRST, then report findings with sources
+        - Examples of what REQUIRES sources:
+          * "This person doesn't exist" → MUST have sources proving non-existence
+          * "This event never happened" → MUST have sources or historical records
+          * "This article is fabricated" → MUST have fact-check sources
+          * "This statistic is false" → MUST have sources with correct data
+        - Examples of acceptable without sources:
+          * "This uses emotional language" (subjective analysis)
+          * "This contains a logical fallacy" (structural analysis)
+          * "This appears to be propaganda" (pattern recognition)
+
         IMPORTANT for verifiable_claims:
         - Extract ONLY specific, factual claims that can be verified through external sources
         - Focus on statements about events, statistics, quotes, dates, or measurable facts
@@ -117,6 +132,7 @@ class GeminiExplainer:
         - Be concise (one sentence per claim)
         - Examples of good claims: "The unemployment rate dropped to 3.5% in December 2024", "President X signed bill Y on January 1st"
         - Limit to top 3-5 most significant claims
+        - Include ANY claim you make about something being false or non-existent
         """
 
         try:

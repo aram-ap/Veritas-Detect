@@ -24,6 +24,7 @@ from gemini_explainer import GeminiExplainer
 from cache import get_cache
 from bias_data import get_bias_from_url
 from fact_checker import get_fact_checker
+from claim_validator import get_claim_validator
 
 logger = logging.getLogger(__name__)
 
@@ -396,11 +397,12 @@ def predict_full_analysis(
                 logger.error(f"Fact-checking failed: {e}")
                 # Continue without fact-checking if it fails
 
-        # 3. Sort flagged snippets by their location in the text (by index)
-        flagged_snippets = gemini_result.get('flagged_snippets', [])
-        flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
+        # 3. Validate flagged snippets to ensure negative assertions have sources
+        logger.info("Validating flagged snippets for negative assertions...")
+        claim_validator = get_claim_validator()
 
-        result = {
+        # Build preliminary result for validation
+        preliminary_result = {
             'trust_score': gemini_result['trust_score'],
             'label': gemini_result['label'],
             'bias': final_bias,
@@ -417,6 +419,16 @@ def predict_full_analysis(
                 'fact_checks_performed': len(fact_checked_claims)
             }
         }
+
+        # Validate and enrich snippets
+        # Control via env var: REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS (default: true)
+        require_sources = os.getenv('REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS', 'true').lower() == 'true'
+        result = claim_validator.validate_analysis_result(preliminary_result, require_sources=require_sources)
+
+        # 4. Sort flagged snippets by their location in the text (by index)
+        flagged_snippets = result.get('flagged_snippets', [])
+        flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
+        result['flagged_snippets'] = flagged_snippets
 
         # Save to cache
         cache.set(url or title or "", text, result)
@@ -563,8 +575,13 @@ async def predict_full_analysis_streaming(
             except Exception as e:
                 logger.error(f"Fact-checking failed: {e}")
 
-        # Complete result
-        result = {
+        # Validate flagged snippets
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Validating claims for sources...', 'progress': 90})}\n\n"
+
+        claim_validator = get_claim_validator()
+
+        # Build preliminary result
+        preliminary_result = {
             'trust_score': gemini_result['trust_score'],
             'label': gemini_result['label'],
             'bias': final_bias,
@@ -581,6 +598,10 @@ async def predict_full_analysis_streaming(
                 'fact_checks_performed': len(fact_checked_claims)
             }
         }
+
+        # Validate and enrich
+        require_sources = os.getenv('REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS', 'true').lower() == 'true'
+        result = claim_validator.validate_analysis_result(preliminary_result, require_sources=require_sources)
 
         # Cache result
         cache.set(url or title or "", text, result)
