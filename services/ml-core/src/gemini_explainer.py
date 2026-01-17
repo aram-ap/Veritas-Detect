@@ -59,10 +59,10 @@ class GeminiExplainer:
 
         prompt = f"""
         Analyze the following text for misinformation, bias, and logical fallacies.
-        
+
         Title: {title or 'No title'}
         Text: {text[:15000]}  # Truncate if too long
-        
+
         Provide the output in strict JSON format with the following structure:
         {{
             "trust_score": <integer 0-100>,
@@ -77,22 +77,27 @@ class GeminiExplainer:
                     "severity": <"low", "medium", "high">
                 }}
             ],
-            "fact_checks": [
-                {{
-                    "claim": <string>,
-                    "status": <"Verified", "False", "Misleading">,
-                    "explanation": <string>
-                }}
+            "verifiable_claims": [
+                <string: specific, factual claim that can be verified>,
+                <string: another verifiable claim>
             ]
         }}
-        
+
         Guidelines:
-        - Be objective.
+        - Be objective and analytical.
         - "Misinformation": False information regardless of intent.
         - "Disinformation": Intentionally false information.
         - "Propaganda": Content designed to manipulate emotions/opinions rather than inform.
         - "Logical Fallacy": Flawed reasoning (ad hominem, straw man, etc.).
         - "Bias": Assess the political leaning based on tone, framing, and omission.
+
+        IMPORTANT for verifiable_claims:
+        - Extract ONLY specific, factual claims that can be verified through external sources
+        - Focus on statements about events, statistics, quotes, dates, or measurable facts
+        - Avoid subjective opinions or interpretations
+        - Be concise (one sentence per claim)
+        - Examples of good claims: "The unemployment rate dropped to 3.5% in December 2024", "President X signed bill Y on January 1st"
+        - Limit to top 3-5 most significant claims
         """
 
         try:
@@ -146,7 +151,7 @@ class GeminiExplainer:
             "bias": "Unknown",
             "summary": "AI analysis unavailable.",
             "flagged_snippets": [],
-            "fact_checks": []
+            "verifiable_claims": []
         }
 
     # Compatibility methods for existing code calls (if any remain)

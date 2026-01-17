@@ -21,6 +21,7 @@ from preprocessing import prepare_for_model
 from gemini_explainer import GeminiExplainer
 from cache import get_cache
 from bias_data import get_bias_from_url
+from fact_checker import get_fact_checker
 
 logger = logging.getLogger(__name__)
 
@@ -363,11 +364,36 @@ def predict_full_analysis(
     
     # 1. Try Gemini Analysis (Primary)
     gemini_result = gemini_explainer.analyze_content(text, title)
-    
+
     if gemini_result["trust_score"] != 50 or gemini_result["label"] != "Unknown":
         # Gemini succeeded
         final_bias = db_bias if db_bias else gemini_result['bias']
-        
+
+        # 2. External Fact-Checking for Verifiable Claims
+        fact_checked_claims = []
+        verifiable_claims = gemini_result.get('verifiable_claims', [])
+
+        if verifiable_claims:
+            logger.info(f"Found {len(verifiable_claims)} verifiable claims, checking with external APIs...")
+            try:
+                fact_checker = get_fact_checker()
+                fact_check_results = fact_checker.check_claims(verifiable_claims, max_results_per_claim=1)
+
+                # Convert FactCheckResult objects to dictionaries
+                for fc_result in fact_check_results:
+                    fact_checked_claims.append({
+                        'claim': fc_result.claim,
+                        'status': fc_result.status,
+                        'explanation': fc_result.explanation,
+                        'sources': fc_result.sources,
+                        'confidence': fc_result.confidence
+                    })
+
+                logger.info(f"Completed fact-checking: {len(fact_checked_claims)} claims verified")
+            except Exception as e:
+                logger.error(f"Fact-checking failed: {e}")
+                # Continue without fact-checking if it fails
+
         result = {
             'trust_score': gemini_result['trust_score'],
             'label': gemini_result['label'],
@@ -377,14 +403,15 @@ def predict_full_analysis(
                 'generated_by': 'gemini'
             },
             'flagged_snippets': gemini_result.get('flagged_snippets', []),
-            'fact_checked_claims': gemini_result.get('fact_checks', []),
+            'fact_checked_claims': fact_checked_claims if fact_checked_claims else None,
             'metadata': {
                 'model': 'gemini-3-flash-preview',
                 'source': 'ai_generated',
-                'bias_source': 'database' if db_bias else 'ai_generated'
+                'bias_source': 'database' if db_bias else 'ai_generated',
+                'fact_checks_performed': len(fact_checked_claims)
             }
         }
-        
+
         # Save to cache
         cache.set(url or title or "", text, result)
         return result
