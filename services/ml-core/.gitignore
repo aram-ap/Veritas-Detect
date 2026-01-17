@@ -42,8 +42,8 @@ data/
 *.zip
 
 # Models
-models/
-*.pkl
+# models/
+# *.pkl
 *.joblib
 *.h5
 *.pt

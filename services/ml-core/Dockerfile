@@ -67,12 +67,26 @@ COPY --chown=appuser:appuser ./requirements.txt .
 # COPY --chown=appuser:appuser ./data/dataset.csv ./data/dataset.csv
 
 # Copy pre-trained model for deployment
-# IMPORTANT: Make sure you've trained the model locally first!
-# The model file should exist at ./models/misinfo_model.pkl before building
-COPY --chown=appuser:appuser ./models/misinfo_model.pkl ./models/misinfo_model.pkl
-
-# Note: For development, you can comment out the line above and mount the model as a volume:
-# docker run -v $(pwd)/models:/app/models ml-core:latest
+# ⚠️ IMPORTANT: Model is 381MB and exceeds GitHub's 100MB limit!
+# 
+# Choose ONE of these options:
+#
+# Option 1: Use Git LFS (Recommended)
+#   - Run: ./setup-git-lfs.sh
+#   - Uncomment the line below
+#   - Git LFS will handle the large file
+#
+# Option 2: External Storage (Production)
+#   - Use Dockerfile.external-model instead
+#   - Store model in DigitalOcean Spaces/S3
+#   - Download at runtime
+#
+# Option 3: Local Development Only
+#   - Comment out COPY line below
+#   - Mount model as volume: -v $(pwd)/models:/app/models
+#
+# Uncomment this line only if using Git LFS:
+# COPY --chown=appuser:appuser ./models/misinfo_model.pkl ./models/misinfo_model.pkl
 
 # Switch to non-root user
 USER appuser

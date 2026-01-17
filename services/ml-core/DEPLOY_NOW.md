@@ -1,13 +1,34 @@
 # 🚀 Deploy Your ML Backend to DigitalOcean - RIGHT NOW!
 
-## Current Status: ✅ READY TO DEPLOY
+## ⚠️ IMPORTANT: Model Size Issue
 
-Your ML Core backend is fully prepared for deployment!
+Your model is **381MB** but GitHub limits files to **100MB**!
+
+### Quick Fix (Choose One):
+
+**Option 1: Git LFS** (Recommended - FREE, 5 minutes)
+```bash
+cd services/ml-core
+./setup-git-lfs.sh
+# Then follow prompts
+```
+See: **QUICK_FIX.md** for step-by-step
+
+**Option 2: DigitalOcean Spaces** (Production - $5/mo, 15 minutes)
+- Create Space, upload model, use `Dockerfile.external-model`
+- See: **MODEL_DEPLOYMENT_GUIDE.md**
+
+---
+
+## Current Status: ⚠️ NEEDS MODEL SETUP
+
+Your ML Core backend is almost ready, just need to handle the large model!
 
 ### What You Have:
 ✅ **Trained ML Model**: 381MB model file ready  
+⚠️ **Model Storage**: Need to use Git LFS or external storage (see above)
 ✅ **GitHub Repository**: `aram-ap/Veritas-Web`  
-✅ **Docker Configuration**: Dockerfile updated and ready  
+✅ **Docker Configuration**: Dockerfile updated (with instructions)  
 ✅ **Environment Config**: `.env` file configured with Gemini API  
 ✅ **Deployment Scripts**: All automation scripts created  
 

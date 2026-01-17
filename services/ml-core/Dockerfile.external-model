@@ -1,0 +1,81 @@
+###############################################################################
+# Dockerfile for ML Service with External Model Storage
+# 
+# This version downloads the model from external storage (S3, Spaces, etc.)
+# at build time or runtime, avoiding the need to include it in git.
+#
+# Build: docker build -f Dockerfile.external-model -t ml-core:latest .
+# Run:   docker run -p 8000:8000 -e MODEL_URL=https://... ml-core:latest
+###############################################################################
+
+# Stage 1: Builder stage for dependencies
+FROM python:3.10-slim as builder
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# Stage 2: Runtime stage
+FROM python:3.10-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/data /app/models /app/logs && \
+    chown -R appuser:appuser /app
+
+WORKDIR /app
+
+# Copy application code
+COPY --chown=appuser:appuser ./src ./src
+COPY --chown=appuser:appuser ./requirements.txt .
+COPY --chown=appuser:appuser ./download_model.py .
+
+USER appuser
+
+EXPOSE 8000
+
+# Download model at startup (if MODEL_URL is provided)
+# The model will be downloaded before starting the server
+CMD python download_model.py && \
+    uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+###############################################################################
+# Usage Instructions:
+#
+# 1. Upload your model to cloud storage and get a public URL
+#
+# 2. Build the image:
+#    docker build -f Dockerfile.external-model -t ml-core:latest .
+#
+# 3. Run with MODEL_URL:
+#    docker run -d -p 8000:8000 \
+#      -e MODEL_URL="https://your-space.nyc3.digitaloceanspaces.com/misinfo_model.pkl" \
+#      ml-core:latest
+#
+# 4. For DigitalOcean App Platform, add MODEL_URL to environment variables
+###############################################################################
