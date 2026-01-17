@@ -44,14 +44,23 @@ function createPrismaClient() {
   }
 
   // Configure connection pool for serverless environment
+  const connectionTimeout = parseInt(process.env.DATABASE_CONNECTION_TIMEOUT || '10000', 10);
+  const queryTimeout = parseInt(process.env.DATABASE_QUERY_TIMEOUT || '20000', 10);
+  
   const pool = new Pool({ 
     connectionString,
     ssl: sslConfig,
     // Serverless-optimized settings
     max: 1, // Limit to 1 connection per serverless function
     idleTimeoutMillis: 10000, // Close idle connections after 10 seconds
-    connectionTimeoutMillis: 5000, // Timeout connection attempts after 5 seconds
+    connectionTimeoutMillis: connectionTimeout, // Configurable: 10 seconds default
     allowExitOnIdle: true, // Allow the pool to exit when idle
+    // Query timeout settings for PostgreSQL
+    statement_timeout: queryTimeout, // Configurable: 20 seconds default
+    query_timeout: queryTimeout, // Configurable: 20 seconds default
+    // Keep-alive to prevent connection drops
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
   
   const adapter = new PrismaPg(pool);

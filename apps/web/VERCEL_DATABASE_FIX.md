@@ -12,14 +12,24 @@ Serverless functions on Vercel can create many database connections, exhausting 
 Updated `/apps/web/src/lib/prisma.ts` with serverless-optimized settings:
 - `max: 1` - Limit to 1 connection per serverless function
 - `idleTimeoutMillis: 10000` - Close idle connections quickly
-- `connectionTimeoutMillis: 5000` - Fail fast on connection issues
+- `connectionTimeoutMillis: 10000` - Increased to 10s for high-latency connections
+- `statement_timeout: 20000` - 20 seconds for query execution
+- `query_timeout: 20000` - 20 seconds for queries
+- `keepAlive: true` - Keep connections alive to prevent drops
 - `allowExitOnIdle: true` - Allow pool to clean up properly
 
-### 2. Improved Error Handling
+### 2. Optimized Query Performance
 Enhanced `/apps/web/src/app/api/stats/route.ts` with:
+- Split queries to only fetch needed fields
+- Use `select` instead of `include` to reduce data transfer
+- Parallel queries with `Promise.all` for better performance
+- Limit data fetching (only recent 10 analyses for display)
+
+### 3. Improved Error Handling & Monitoring
 - Better logging for debugging
-- Specific handling for P1008 timeout errors
+- Specific handling for timeout errors
 - User-friendly error messages
+- Added `/api/health` endpoint for connection testing
 
 ## Deployment Steps
 
@@ -67,7 +77,26 @@ If your database doesn't have connection pooling enabled:
    - **Pool Size**: `15-25` (based on your tier)
 5. Use the new pooled connection string in Vercel
 
-### Step 4: Monitor After Deployment
+### Step 4: Test Database Connection
+
+After deployment, test the health endpoint:
+```bash
+curl https://your-vercel-url.vercel.app/api/health
+```
+
+Expected response:
+```json
+{
+  "status": "healthy",
+  "database": "connected",
+  "responseTime": "123ms",
+  "timestamp": "2026-01-17T..."
+}
+```
+
+If response time is consistently >5000ms, there's high network latency.
+
+### Step 5: Monitor After Deployment
 
 Check Vercel logs after deployment:
 ```bash
@@ -76,8 +105,9 @@ vercel logs --follow
 
 Look for:
 - ✓ Successful database connections
-- No more `P1008` timeout errors
+- No more timeout errors
 - Faster response times on `/api/stats`
+- Health check showing <2000ms response times
 
 ## Additional Recommendations
 
@@ -86,6 +116,17 @@ In Vercel environment variables, ensure:
 - Connection string includes `?sslmode=require`
 - Port is correct (usually `25060` for direct, `25061` for pooled)
 - Username/password are properly URL-encoded if they contain special characters
+- For pooled connections, add `&pgbouncer=true` parameter:
+  ```
+  DATABASE_URL="postgresql://user:pass@host:25061/db?sslmode=require&pgbouncer=true"
+  ```
+
+### 1a. Check DigitalOcean Database Region
+High latency might be due to geographic distance:
+- Check your database region (e.g., NYC3, SFO3, etc.)
+- Vercel automatically deploys to multiple regions
+- Consider adding `VERCEL_REGION` to force deployment near your DB
+- Or migrate DB closer to your primary user base
 
 ### 2. Database Performance
 If timeouts persist:

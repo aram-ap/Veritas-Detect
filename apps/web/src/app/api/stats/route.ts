@@ -12,14 +12,9 @@ export async function GET() {
   try {
     console.log('[Stats] Fetching user profile for:', session.user.sub);
     
-    // Get user profile with timeout protection
+    // Get user profile (without analyses initially)
     const userProfile = await prisma.userProfile.findUnique({
-      where: { auth0Id: session.user.sub },
-      include: {
-        analyses: {
-          orderBy: { analyzedAt: 'desc' }
-        }
-      }
+      where: { auth0Id: session.user.sub }
     });
 
     if (!userProfile) {
@@ -33,13 +28,39 @@ export async function GET() {
       });
     }
 
+    // Fetch analyses separately with limit - more efficient for large datasets
+    const [allAnalyses, recentAnalysesData] = await Promise.all([
+      // Get all analyses for stats (only needed fields)
+      prisma.analysisRecord.findMany({
+        where: { userId: userProfile.id },
+        select: {
+          hasMisinformation: true,
+          flaggedTags: true,
+        }
+      }),
+      // Get recent 10 for display
+      prisma.analysisRecord.findMany({
+        where: { userId: userProfile.id },
+        orderBy: { analyzedAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          url: true,
+          trustScore: true,
+          hasMisinformation: true,
+          analyzedAt: true,
+        }
+      })
+    ]);
+
     // Calculate statistics
-    const totalAnalyses = userProfile.analyses.length;
-    const misinformationDetected = userProfile.analyses.filter(a => a.hasMisinformation).length;
+    const totalAnalyses = allAnalyses.length;
+    const misinformationDetected = allAnalyses.filter(a => a.hasMisinformation).length;
 
     // Aggregate tag frequencies
     const tagFrequencies: Record<string, number> = {};
-    userProfile.analyses.forEach(analysis => {
+    allAnalyses.forEach(analysis => {
       try {
         const tags = JSON.parse(analysis.flaggedTags) as string[];
         tags.forEach(tag => {
@@ -50,8 +71,8 @@ export async function GET() {
       }
     });
 
-    // Get recent analyses (last 10)
-    const recentAnalyses = userProfile.analyses.slice(0, 10).map(a => ({
+    // Format recent analyses
+    const recentAnalyses = recentAnalysesData.map(a => ({
       id: a.id,
       title: a.title,
       url: a.url,
