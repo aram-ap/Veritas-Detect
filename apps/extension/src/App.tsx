@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { TrustDial } from './components/TrustDial';
 import { FlaggedContent, type FlaggedSnippet } from './components/FlaggedContent';
+import { API_ENDPOINTS, COOKIE_CONFIG } from './config';
 import './index.css';
 
 interface AnalysisResult {
@@ -32,7 +33,7 @@ function App() {
       console.log('[Veritas] Checking authentication...');
 
       // Call the extension-token endpoint which creates a readable cookie and returns user info
-      const res = await fetch('http://localhost:3000/api/auth/extension-token', {
+      const res = await fetch(API_ENDPOINTS.AUTH_EXTENSION_TOKEN, {
         credentials: 'include' // Send httpOnly cookies automatically
       });
 
@@ -50,8 +51,8 @@ function App() {
       if (data.authenticated && data.user) {
         // Now check if the readable cookie was set
         const authCookie = await chrome.cookies.get({
-          url: 'http://localhost:3000',
-          name: 'veritas-ext-auth'
+          url: COOKIE_CONFIG.url,
+          name: COOKIE_CONFIG.authCookieName
         });
 
         console.log('[Veritas] Readable auth cookie:', authCookie);
@@ -215,17 +216,17 @@ function App() {
   }, [checkAuth, authState, updateCurrentTabUrl, result]);
 
   const handleLogin = () => {
-    chrome.tabs.create({ url: 'http://localhost:3000/api/auth/login' });
+    chrome.tabs.create({ url: API_ENDPOINTS.AUTH_LOGIN });
   };
 
   const handleLogout = async () => {
     // Clear the extension auth cookie
     await chrome.cookies.remove({
-      url: 'http://localhost:3000',
-      name: 'veritas-ext-auth'
+      url: COOKIE_CONFIG.url,
+      name: COOKIE_CONFIG.authCookieName
     });
 
-    chrome.tabs.create({ url: 'http://localhost:3000/api/auth/logout' });
+    chrome.tabs.create({ url: API_ENDPOINTS.AUTH_LOGOUT });
     setAuthState('unauthenticated');
     setResult(null);
   };
@@ -283,7 +284,7 @@ function App() {
       console.log('[Veritas] Sending text to API:', response.text.substring(0, 100) + '...');
 
       // Send analyze request with credentials (browser automatically includes httpOnly cookies)
-      const analyzeRes = await fetch('http://localhost:3000/api/analyze', {
+      const analyzeRes = await fetch(API_ENDPOINTS.ANALYZE, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
