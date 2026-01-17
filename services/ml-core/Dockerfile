@@ -66,15 +66,13 @@ COPY --chown=appuser:appuser ./requirements.txt .
 # Copy the dataset if it exists (optional - can also be mounted as volume)
 # COPY --chown=appuser:appuser ./data/dataset.csv ./data/dataset.csv
 
-# Create a placeholder for the model
-# Option 1: Train model during build (requires dataset in build context)
-# RUN if [ -f data/dataset.csv ]; then python src/training.py; fi
+# Copy pre-trained model for deployment
+# IMPORTANT: Make sure you've trained the model locally first!
+# The model file should exist at ./models/misinfo_model.pkl before building
+COPY --chown=appuser:appuser ./models/misinfo_model.pkl ./models/misinfo_model.pkl
 
-# Option 2: Copy pre-trained model (if you've trained it locally)
-# COPY --chown=appuser:appuser ./models/misinfo_model.pkl ./models/misinfo_model.pkl
-
-# Option 3: Model will be trained/loaded at runtime (recommended for development)
-# The model can be mounted as a volume: -v ./models:/app/models
+# Note: For development, you can comment out the line above and mount the model as a volume:
+# docker run -v $(pwd)/models:/app/models ml-core:latest
 
 # Switch to non-root user
 USER appuser

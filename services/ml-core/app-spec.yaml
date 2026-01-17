@@ -1,0 +1,63 @@
+name: ml-core-backend
+region: nyc  # Options: nyc (New York), sfo (San Francisco), ams (Amsterdam), sgp (Singapore), fra (Frankfurt), blr (Bangalore)
+
+services:
+- name: ml-api
+  # Source configuration
+  # IMPORTANT: Update this with your actual repository details
+  github:
+    repo: your-username/CruzHacks26  # Update with your GitHub username
+    branch: main
+    deploy_on_push: true
+  
+  source_dir: /services/ml-core
+  dockerfile_path: services/ml-core/Dockerfile
+  
+  # Service configuration
+  http_port: 8000
+  
+  # Health check
+  health_check:
+    http_path: /health
+    initial_delay_seconds: 60  # Give time for model to load
+    period_seconds: 10
+    timeout_seconds: 5
+    success_threshold: 1
+    failure_threshold: 3
+  
+  # Environment variables
+  envs:
+  - key: PORT
+    value: "8000"
+  
+  - key: GEMINI_API_KEY
+    value: "YOUR_GEMINI_API_KEY_HERE"  # Replace with actual key
+    type: SECRET  # Marked as secret for security
+  
+  - key: CORS_ORIGINS
+    value: "http://localhost:3000,https://yourdomain.com"  # Update with your frontend URLs
+  
+  - key: LOG_LEVEL
+    value: "info"
+  
+  - key: WORKERS
+    value: "1"  # Increase for production (2x CPU cores recommended)
+  
+  # Instance configuration
+  instance_count: 1  # Number of instances (increase for high availability)
+  instance_size_slug: professional-xs  # Options: basic-xxs, basic-xs, professional-xs, professional-s
+  
+  # Routing
+  routes:
+  - path: /
+
+# Optional: Add alerts
+alerts:
+- rule: DEPLOYMENT_FAILED
+- rule: DOMAIN_FAILED
+
+# Optional: Database (if you add one later)
+# databases:
+# - name: ml-cache
+#   engine: REDIS
+#   production: false
