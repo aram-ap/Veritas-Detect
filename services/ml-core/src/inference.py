@@ -22,6 +22,7 @@ from gemini_explainer import GeminiExplainer
 from cache import get_cache
 from bias_data import get_bias_from_url
 from fact_checker import get_fact_checker
+from web_search import get_web_search
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +394,33 @@ def predict_full_analysis(
             except Exception as e:
                 logger.error(f"Fact-checking failed: {e}")
                 # Continue without fact-checking if it fails
+
+        # 3. Web Search for Current Events Verification
+        flagged_snippets = gemini_result.get('flagged_snippets', [])
+        for snippet in flagged_snippets:
+            # Check if this snippet needs verification
+            if snippet.get('needs_verification', False):
+                search_query = snippet.get('search_query') or snippet.get('text', '')
+
+                logger.info(f"Verifying flagged snippet with web search: {search_query[:50]}...")
+
+                try:
+                    web_search = get_web_search()
+                    verification_result = web_search.verify_claim_with_sources(
+                        snippet.get('text', ''),
+                        search_query=search_query
+                    )
+
+                    # Add sources to the snippet
+                    snippet['sources'] = verification_result.get('sources', [])
+                    snippet['verification_status'] = verification_result.get('status', 'Unverified')
+                    snippet['verification_confidence'] = verification_result.get('confidence', 0.0)
+
+                    logger.info(f"Verification complete: {verification_result.get('status')}")
+                except Exception as e:
+                    logger.error(f"Web search verification failed: {e}")
+                    snippet['sources'] = []
+                    snippet['verification_status'] = 'Verification Failed'
 
         result = {
             'trust_score': gemini_result['trust_score'],

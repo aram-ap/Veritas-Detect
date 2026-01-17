@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from typing import List, Dict, Optional, Any
+from datetime import datetime
 import google.generativeai as genai
 from dataclasses import dataclass
 
@@ -57,7 +58,18 @@ class GeminiExplainer:
         if not self.enabled:
             return self._get_fallback_response()
 
+        # Get current date/time for context
+        current_date = datetime.now().strftime("%B %d, %Y")
+        current_year = datetime.now().year
+
         prompt = f"""
+        IMPORTANT CONTEXT:
+        - Today's date is: {current_date}
+        - Current year: {current_year}
+        - You have access to information up to your training cutoff (likely 2024 or earlier)
+        - For claims about events after your cutoff, flag them for verification rather than assuming they're false
+        - Articles dated in the future relative to your knowledge are likely legitimate news, not misinformation
+
         Analyze the following text for misinformation, bias, and logical fallacies.
 
         Title: {title or 'No title'}
@@ -74,7 +86,9 @@ class GeminiExplainer:
                     "text": <exact substring from text>,
                     "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy">,
                     "reason": <concise explanation>,
-                    "severity": <"low", "medium", "high">
+                    "severity": <"low", "medium", "high">,
+                    "needs_verification": <boolean - true if claim is about recent events you can't verify>,
+                    "search_query": <optional string - specific search query to verify this claim, only if needs_verification is true>
                 }}
             ],
             "verifiable_claims": [

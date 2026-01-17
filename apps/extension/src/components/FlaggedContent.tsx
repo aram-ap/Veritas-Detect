@@ -7,6 +7,15 @@ export interface FlaggedSnippet {
   reason: string;
   confidence?: number;
   severity?: 'low' | 'medium' | 'high';
+  sources?: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    source: string;
+    is_credible: boolean;
+  }>;
+  verification_status?: string;
+  verification_confidence?: number;
 }
 
 interface FlaggedContentProps {
@@ -141,7 +150,62 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
       {expanded && (
         <div className="px-3 pb-3 pt-0 text-sm opacity-90 border-t border-black/10 mt-1 pt-2">
           <p className="mb-1 font-semibold text-xs opacity-70 uppercase">Analysis:</p>
-          <p>{snippet.reason}</p>
+          <p className="mb-3">{snippet.reason}</p>
+
+          {/* Verification Status */}
+          {snippet.verification_status && (
+            <div className="mb-3 p-2 rounded-lg bg-black/20 border border-white/10">
+              <p className="text-xs font-semibold opacity-70 uppercase mb-1">Verification Status:</p>
+              <p className="text-xs">{snippet.verification_status}</p>
+              {snippet.verification_confidence !== undefined && (
+                <p className="text-xs opacity-60 mt-1">
+                  Confidence: {(snippet.verification_confidence * 100).toFixed(0)}%
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Sources */}
+          {snippet.sources && snippet.sources.length > 0 && (
+            <div>
+              <p className="mb-2 font-semibold text-xs opacity-70 uppercase flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Sources Found:
+              </p>
+              <div className="space-y-2">
+                {snippet.sources.map((source, idx) => (
+                  <a
+                    key={idx}
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-2 rounded-lg bg-black/20 border border-white/10 hover:border-white/30 hover:bg-black/30 transition-all"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-start gap-2">
+                      {source.is_credible && (
+                        <svg className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{source.title}</p>
+                        <p className="text-[10px] opacity-60 truncate">{source.source}</p>
+                        {source.snippet && (
+                          <p className="text-[10px] opacity-70 mt-1 line-clamp-2">{source.snippet}</p>
+                        )}
+                      </div>
+                      <svg className="w-3 h-3 opacity-40 flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
