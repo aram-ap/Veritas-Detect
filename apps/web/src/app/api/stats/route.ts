@@ -10,7 +10,9 @@ export async function GET() {
   }
 
   try {
-    // Get user profile
+    console.log('[Stats] Fetching user profile for:', session.user.sub);
+    
+    // Get user profile with timeout protection
     const userProfile = await prisma.userProfile.findUnique({
       where: { auth0Id: session.user.sub },
       include: {
@@ -66,7 +68,17 @@ export async function GET() {
       recentAnalyses
     });
   } catch (error) {
-    console.error('Stats fetch error:', error);
+    console.error('[Stats] Error fetching statistics:', error);
+    
+    // Check for specific Prisma timeout error
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P1008') {
+      console.error('[Stats] Database connection timeout - check DATABASE_URL and connection pool settings');
+      return NextResponse.json(
+        { error: 'Database connection timeout. Please try again.' },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch statistics' },
       { status: 500 }

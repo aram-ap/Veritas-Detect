@@ -43,9 +43,15 @@ function createPrismaClient() {
     console.log('⚠ SSL disabled - not recommended for production');
   }
 
+  // Configure connection pool for serverless environment
   const pool = new Pool({ 
     connectionString,
-    ssl: sslConfig
+    ssl: sslConfig,
+    // Serverless-optimized settings
+    max: 1, // Limit to 1 connection per serverless function
+    idleTimeoutMillis: 10000, // Close idle connections after 10 seconds
+    connectionTimeoutMillis: 5000, // Timeout connection attempts after 5 seconds
+    allowExitOnIdle: true, // Allow the pool to exit when idle
   });
   
   const adapter = new PrismaPg(pool);
