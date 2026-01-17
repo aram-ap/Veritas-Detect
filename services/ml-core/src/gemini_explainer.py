@@ -113,10 +113,8 @@ class GeminiExplainer:
         IMPORTANT CONTEXT:
         - Today's date is: {current_date}
         - Current year: {current_year}
-        - You have access to Google Search for fact-checking and verification
-        - USE GOOGLE SEARCH to verify claims about recent events, statistics, or facts you're uncertain about
-        - For claims about events after your training cutoff, SEARCH before flagging them as false
-        - Include search results as sources when you verify information
+        - Your training data may not include recent events from 2025-2026
+        - Claims will be verified separately using web search after your analysis
 
         Analyze the following text for misinformation, bias, and logical fallacies.
 
@@ -134,14 +132,7 @@ class GeminiExplainer:
                     "text": <exact substring from text>,
                     "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy">,
                     "reason": <concise explanation>,
-                    "severity": <"low", "medium", "high">,
-                    "sources": [
-                        {{
-                            "title": <source title>,
-                            "url": <source URL>,
-                            "snippet": <relevant excerpt>
-                        }}
-                    ] (REQUIRED if claiming something is false, doesn't exist, or never happened)
+                    "severity": <"low", "medium", "high">
                 }}
             ],
             "verifiable_claims": [
@@ -158,29 +149,43 @@ class GeminiExplainer:
         - "Logical Fallacy": Flawed reasoning (ad hominem, straw man, etc.).
         - "Bias": Assess the political leaning based on tone, framing, and omission.
 
-        CRITICAL RULES FOR NEGATIVE CLAIMS:
-        - NEVER claim something "doesn't exist", "is false", "never happened", or "is fake" without FIRST verifying via Google Search
-        - If you claim something doesn't exist or is false, you MUST include sources in the flagged snippet
-        - If you cannot find sources to verify a negative claim, use softer language: "could not be verified", "no evidence found in search", "unconfirmed"
-        - When in doubt about existence or truth, SEARCH FIRST, then report findings with sources
-        - Examples of what REQUIRES sources:
-          * "This person doesn't exist" → MUST have sources proving non-existence
-          * "This event never happened" → MUST have sources or historical records
-          * "This article is fabricated" → MUST have fact-check sources
-          * "This statistic is false" → MUST have sources with correct data
-        - Examples of acceptable without sources:
-          * "This uses emotional language" (subjective analysis)
-          * "This contains a logical fallacy" (structural analysis)
-          * "This appears to be propaganda" (pattern recognition)
+        CRITICAL RULES FOR RECENT EVENTS (2025-2026):
+        - DO NOT flag recent events as false or fabricated based solely on your training data
+        - For events from 2025-2026, assume they may be real but need verification
+        - If unsure about a recent event, extract it as a "verifiable_claim" instead of flagging it
+        - Only flag content from recent events if it contains:
+          * Logical fallacies or flawed reasoning
+          * Propaganda techniques (emotional manipulation, loaded language)
+          * Obvious contradictions or impossibilities
+          * Extreme bias in framing
+        - DO NOT flag recent events just because you haven't heard of them
+
+        WHAT TO FLAG:
+        - Analyze the STRUCTURE and LANGUAGE of the article
+        - Flag logical fallacies, propaganda techniques, emotional manipulation
+        - Flag claims that contradict well-established facts (historical events, scientific consensus)
+        - Flag extreme bias, loaded language, or obvious partisan framing
+        - Flag sensationalism, clickbait, or misleading framing
+
+        WHAT NOT TO FLAG:
+        - Recent news events from 2025-2026 that you're not familiar with
+        - Claims about recent people, events, or statistics that are after your training cutoff
+        - Properly attributed quotes or statements (even if controversial)
+        - Standard news reporting on recent events
 
         IMPORTANT for verifiable_claims:
-        - Extract ONLY specific, factual claims that can be verified through external sources
+        - Extract ALL specific, factual claims that can be verified through external sources
         - Focus on statements about events, statistics, quotes, dates, or measurable facts
-        - Avoid subjective opinions or interpretations
-        - Be concise (one sentence per claim)
-        - Examples of good claims: "The unemployment rate dropped to 3.5% in December 2024", "President X signed bill Y on January 1st"
-        - Limit to top 3-5 most significant claims
-        - Include ANY claim you make about something being false or non-existent
+        - Include claims about people (names, positions, actions)
+        - Include claims about recent events (shootings, resignations, deployments, etc.)
+        - Be specific and preserve key details (names, dates, numbers, locations)
+        - Examples:
+          * "Renee Good was shot by ICE officer Jonathan Ross in Minneapolis"
+          * "Half a dozen federal prosecutors in Minnesota resigned"
+          * "Trump administration sent 2,000 federal agents to Minneapolis"
+          * "Todd Blanche is Deputy Attorney General"
+        - Limit to top 5-10 most significant factual claims
+        - These will be verified using web search separately
         """
 
         try:

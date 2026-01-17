@@ -85,16 +85,22 @@ class PredictRequest(BaseModel):
         description="Article URL (optional, for bias database)",
         max_length=2000
     )
+    article_date: Optional[str] = Field(
+        None,
+        description="Article publication date (optional, ISO format or common date string)",
+        max_length=100
+    )
     force_refresh: bool = Field(
         False,
         description="Whether to force a new analysis (ignoring cache)"
     )
-    
+
     model_config = {
         "json_schema_extra": {
             "example": {
                 "text": "This is a sample news article text that needs to be analyzed for misinformation...",
-                "title": "Breaking: Important News Story"
+                "title": "Breaking: Important News Story",
+                "article_date": "2026-01-13"
             }
         }
     }
@@ -293,7 +299,8 @@ async def predict(request: PredictRequest):
             text=request.text,
             title=request.title,
             url=request.url,
-            force_refresh=request.force_refresh
+            force_refresh=request.force_refresh,
+            article_date=request.article_date
         )
         
         print(f"DEBUG: Analysis Result Metadata: {result.get('metadata')}")
@@ -353,7 +360,8 @@ async def predict_stream(request: PredictRequest):
             text=request.text,
             title=request.title,
             url=request.url,
-            force_refresh=request.force_refresh
+            force_refresh=request.force_refresh,
+            article_date=request.article_date
         ),
         media_type="text/event-stream"
     )

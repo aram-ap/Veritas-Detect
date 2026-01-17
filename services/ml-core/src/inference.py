@@ -371,20 +371,22 @@ def get_gemini_explainer() -> GeminiExplainer:
 
 
 def predict_full_analysis(
-    text: str, 
+    text: str,
     title: Optional[str] = None,
     url: Optional[str] = None,
-    force_refresh: bool = False
+    force_refresh: bool = False,
+    article_date: Optional[str] = None
 ) -> Dict:
     """
     Perform complete analysis: misinformation detection, bias detection, and highlighting.
-    
+
     Args:
         text: Article text
         title: Optional article title
         url: Optional article URL (for database lookup)
         force_refresh: Whether to ignore cache and force new analysis
-        
+        article_date: Optional article publication date (ISO format or common date string)
+
     Returns:
         Complete analysis dictionary ready for API response
     """
@@ -513,7 +515,11 @@ def predict_full_analysis(
         # Validate and enrich snippets
         # Control via env var: REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS (default: true)
         require_sources = os.getenv('REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS', 'true').lower() == 'true'
-        result = claim_validator.validate_analysis_result(preliminary_result, require_sources=require_sources)
+        result = claim_validator.validate_analysis_result(
+            preliminary_result,
+            require_sources=require_sources,
+            article_date=article_date
+        )
 
         # 4. Sort flagged snippets by their location in the text (by index)
         flagged_snippets = result.get('flagged_snippets', [])
@@ -616,7 +622,8 @@ async def predict_full_analysis_streaming(
     text: str,
     title: Optional[str] = None,
     url: Optional[str] = None,
-    force_refresh: bool = False
+    force_refresh: bool = False,
+    article_date: Optional[str] = None
 ) -> Iterator[str]:
     """
     Stream analysis results incrementally as they become available.
@@ -628,6 +635,7 @@ async def predict_full_analysis_streaming(
         title: Optional article title
         url: Optional article URL
         force_refresh: Whether to ignore cache
+        article_date: Optional article publication date
 
     Yields:
         SSE-formatted strings with partial analysis data
@@ -778,7 +786,11 @@ async def predict_full_analysis_streaming(
 
         # Validate and enrich
         require_sources = os.getenv('REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS', 'true').lower() == 'true'
-        result = claim_validator.validate_analysis_result(preliminary_result, require_sources=require_sources)
+        result = claim_validator.validate_analysis_result(
+            preliminary_result,
+            require_sources=require_sources,
+            article_date=article_date
+        )
 
         # Apply aggregation logic to final result (same lenient logic as non-streaming)
         if fact_checked_claims:
