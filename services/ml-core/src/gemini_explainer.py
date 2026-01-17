@@ -120,16 +120,11 @@ class GeminiExplainer:
         """
 
         try:
-            print(f"DEBUG: Sending request to Gemini ({self.model_name}) with Google Search grounding...")
+            print(f"DEBUG: Sending request to Gemini ({self.model_name})...")
 
-            # Enable Google Search grounding using the correct tool name
-            from google.generativeai.types import Tool
-            google_search_tool = Tool(google_search={})
-
-            response = self.model.generate_content(
-                prompt,
-                tools=[google_search_tool]
-            )
+            # Note: Google Search grounding requires specific Gemini model versions
+            # For now, relying on Gemini's training data and the date context we provide
+            response = self.model.generate_content(prompt)
             print("DEBUG: Received response from Gemini")
             
             # Extract JSON from response text

@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -45,6 +46,32 @@ export default function Dashboard() {
       console.error(err);
     } finally {
       setLoadingStats(false);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!confirm('Are you sure you want to clear all your analysis history? This cannot be undone.')) {
+      return;
+    }
+
+    setClearing(true);
+    try {
+      const response = await fetch('/api/history/clear', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear history');
+      }
+
+      // Refresh stats to show empty state
+      await fetchStats();
+      alert('History cleared successfully!');
+    } catch (err) {
+      alert('Failed to clear history. Please try again.');
+      console.error(err);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -222,7 +249,16 @@ export default function Dashboard() {
           {/* Recent Analyses */}
           {stats && stats.recentAnalyses.length > 0 && (
             <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
-              <h2 className="text-xl font-semibold text-white mb-6">Recent Analyses</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">Recent Analyses</h2>
+                <button
+                  onClick={handleClearHistory}
+                  disabled={clearing}
+                  className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {clearing ? 'Clearing...' : 'Clear History'}
+                </button>
+              </div>
               <div className="space-y-4">
                 {stats.recentAnalyses.map((analysis) => (
                   <div 

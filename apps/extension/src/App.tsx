@@ -587,26 +587,18 @@ function App() {
                </div>
             )}
 
-            {/* New analysis button */}
+            {/* Rescan button */}
             <button
-              onClick={async () => {
-                setResult(null);
-                setError(null);
-                setSelectedSnippetIndex(null);
-
-                // Clear highlights on the page
-                try {
-                  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                  if (tab.id) {
-                    await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_HIGHLIGHTS' });
-                  }
-                } catch (clearError) {
-                  console.error('[Veritas] Failed to clear highlights:', clearError);
-                }
-              }}
-              className="mt-6 w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-gray-300 font-medium rounded-xl transition-all duration-200 border border-slate-700"
+              onClick={() => handleAnalyze(true)} // Pass true for forceRefresh to bypass cache
+              disabled={analyzing}
+              className="mt-6 w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Scan Another Page
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Rescan Page</span>
+              </div>
             </button>
           </div>
         )}

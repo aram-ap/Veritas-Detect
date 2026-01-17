@@ -83,17 +83,54 @@ export async function POST(req: Request) {
         });
       }
 
-      // Record the analysis
-      await prisma.analysisRecord.create({
-        data: {
-          userId: userProfile.id,
-          url: body.url || null,
-          title: body.title || null,
-          trustScore: score,
-          hasMisinformation,
-          flaggedTags: JSON.stringify(Array.from(tags)),
+      // Record the analysis (upsert if URL exists to avoid duplicates)
+      if (body.url) {
+        // If URL is provided, update existing record or create new one
+        const existingRecord = await prisma.analysisRecord.findFirst({
+          where: {
+            userId: userProfile.id,
+            url: body.url
+          }
+        });
+
+        if (existingRecord) {
+          // Update existing record
+          await prisma.analysisRecord.update({
+            where: { id: existingRecord.id },
+            data: {
+              title: body.title || existingRecord.title,
+              trustScore: score,
+              hasMisinformation,
+              flaggedTags: JSON.stringify(Array.from(tags)),
+              analyzedAt: new Date(), // Update timestamp
+            }
+          });
+        } else {
+          // Create new record
+          await prisma.analysisRecord.create({
+            data: {
+              userId: userProfile.id,
+              url: body.url,
+              title: body.title || null,
+              trustScore: score,
+              hasMisinformation,
+              flaggedTags: JSON.stringify(Array.from(tags)),
+            }
+          });
         }
-      });
+      } else {
+        // No URL, always create new record
+        await prisma.analysisRecord.create({
+          data: {
+            userId: userProfile.id,
+            url: null,
+            title: body.title || null,
+            trustScore: score,
+            hasMisinformation,
+            flaggedTags: JSON.stringify(Array.from(tags)),
+          }
+        });
+      }
     } catch (dbError) {
       console.error('Failed to record analysis in database:', dbError);
       // Continue even if database tracking fails
