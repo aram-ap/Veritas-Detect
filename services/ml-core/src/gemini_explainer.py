@@ -74,8 +74,8 @@ class GeminiExplainer:
                 try:
                     self.model = genai.GenerativeModel(self.model_name)
                 except AttributeError:
-                    # New package structure
-                    self.model = self.client.models.get(self.model_name)
+                    # New package structure - just store model name, no need to get model object
+                    self.model = None  # Will use client.models.generate_content directly
                 
                 logger.info(f"✓ Gemini model '{self.model_name}' initialized successfully")
                 print(f"✓ Gemini model '{self.model_name}' initialized successfully")
@@ -87,7 +87,8 @@ class GeminiExplainer:
                     try:
                         self.model = genai.GenerativeModel(self.model_name)
                     except AttributeError:
-                        self.model = self.client.models.get(self.model_name)
+                        # New package structure - just store model name
+                        self.model = None
                     print("DEBUG: Fallback model initialized successfully")
                 except Exception as e2:
                     logger.error(f"Failed to initialize fallback model: {e2}")
@@ -187,7 +188,17 @@ class GeminiExplainer:
 
             # Note: Google Search grounding requires specific Gemini model versions
             # For now, relying on Gemini's training data and the date context we provide
-            response = self.model.generate_content(prompt)
+            
+            # Handle both old and new package structures
+            if self.model is not None:
+                # Old package: genai.GenerativeModel
+                response = self.model.generate_content(prompt)
+            else:
+                # New package: use client.models.generate_content
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
             print("DEBUG: Received response from Gemini")
             
             # Extract JSON from response text
