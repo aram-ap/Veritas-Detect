@@ -113,8 +113,17 @@ class ClaimValidator:
         existing_sources = snippet.get('sources', [])
 
         # If snippet already has sources, it's valid
+        # Extract URLs from sources (they might be dicts or strings)
         if existing_sources:
-            return True, existing_sources
+            source_urls = []
+            for source in existing_sources:
+                if isinstance(source, dict):
+                    url = source.get('url')
+                    if url:
+                        source_urls.append(url)
+                elif isinstance(source, str):
+                    source_urls.append(source)
+            return True, source_urls if source_urls else existing_sources
 
         # Check if snippet contains negative assertions
         combined_text = f"{text} {reason}"
