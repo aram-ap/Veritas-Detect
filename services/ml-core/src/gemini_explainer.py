@@ -4,7 +4,18 @@ import logging
 import re
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-import google.generativeai as genai
+try:
+    from google import genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    # Fallback to old package if new one not installed yet
+    try:
+        import google.generativeai as genai
+        GENAI_AVAILABLE = True
+        logger.warning("Using deprecated google.generativeai package. Please upgrade to google-genai.")
+    except ImportError:
+        GENAI_AVAILABLE = False
+        logger.error("Neither google-genai nor google-generativeai packages found!")
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -38,8 +49,20 @@ class GeminiExplainer:
             print("3. Restart the service")
             print("=" * 70 + "\n")
             self.enabled = False
+        elif not GENAI_AVAILABLE:
+            logger.error("=" * 70)
+            logger.error("❌ CRITICAL: Google Generative AI package not installed")
+            logger.error("Install with: pip install google-genai")
+            logger.error("=" * 70)
+            self.enabled = False
         else:
-            genai.configure(api_key=self.api_key)
+            # Configure with API key (works for both old and new packages)
+            try:
+                genai.configure(api_key=self.api_key)
+            except AttributeError:
+                # New package uses Client instead
+                self.client = genai.Client(api_key=self.api_key)
+            
             self.enabled = True
             # Use the specific model requested by user, or fallback
             requested_model = os.getenv("GEMINI_MODEL", model_name)
@@ -47,8 +70,13 @@ class GeminiExplainer:
             print(f"✓ Initializing Gemini with model: {requested_model}")
             try:
                 self.model_name = requested_model
-                # Initialize model (Google Search grounding enabled via generation config)
-                self.model = genai.GenerativeModel(self.model_name)
+                # Initialize model (works for old package)
+                try:
+                    self.model = genai.GenerativeModel(self.model_name)
+                except AttributeError:
+                    # New package structure
+                    self.model = self.client.models.get(self.model_name)
+                
                 logger.info(f"✓ Gemini model '{self.model_name}' initialized successfully")
                 print(f"✓ Gemini model '{self.model_name}' initialized successfully")
             except Exception as e:
@@ -56,7 +84,10 @@ class GeminiExplainer:
                 print("DEBUG: Attempting fallback to 'gemini-2.0-flash-exp'...")
                 try:
                     self.model_name = "gemini-2.0-flash-exp"
-                    self.model = genai.GenerativeModel(self.model_name)
+                    try:
+                        self.model = genai.GenerativeModel(self.model_name)
+                    except AttributeError:
+                        self.model = self.client.models.get(self.model_name)
                     print("DEBUG: Fallback model initialized successfully")
                 except Exception as e2:
                     logger.error(f"Failed to initialize fallback model: {e2}")

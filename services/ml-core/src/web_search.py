@@ -36,7 +36,22 @@ class WebSearchService:
             search_engine_id: Google Custom Search Engine ID
         """
         self.google_api_key = google_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        self.search_engine_id = search_engine_id or os.getenv("GOOGLE_SEARCH_ENGINE_ID") or "017576662512468239146:omuauf_lfve"  # Example ID
+        self.search_engine_id = search_engine_id or os.getenv("GOOGLE_SEARCH_ENGINE_ID")
+        
+        # Validate Search Engine ID format (should not be an API key)
+        if self.search_engine_id and self.search_engine_id.startswith("AIza"):
+            logger.error("=" * 70)
+            logger.error("❌ INVALID GOOGLE_SEARCH_ENGINE_ID")
+            logger.error("You've provided an API key instead of a Search Engine ID!")
+            logger.error("Search Engine IDs look like: '017576662512468239146:omuauf_lfve'")
+            logger.error("Create one at: https://programmablesearchengine.google.com/")
+            logger.error("=" * 70)
+            self.search_engine_id = None  # Disable to prevent API errors
+        
+        # Use example ID as fallback only if none provided
+        if not self.search_engine_id:
+            self.search_engine_id = "017576662512468239146:omuauf_lfve"
+            logger.warning("Using example Search Engine ID. Create your own for production.")
 
         self.enabled = bool(self.google_api_key)
 

@@ -203,14 +203,29 @@ class ClaimValidator:
                 if 'sources' not in snippet or not snippet['sources']:
                     snippet['sources'] = []
 
+                # Extract existing URLs to avoid recursion issues
+                existing_urls = set()
+                for s in snippet['sources']:
+                    try:
+                        if isinstance(s, dict):
+                            url = s.get('url')
+                            if url:
+                                existing_urls.add(url)
+                        elif isinstance(s, str):
+                            existing_urls.add(s)
+                    except (AttributeError, TypeError):
+                        # Skip malformed sources
+                        continue
+
                 # Add sources in the expected format
                 for source_url in sources:
-                    if source_url and source_url not in [s.get('url') if isinstance(s, dict) else s for s in snippet['sources']]:
+                    if source_url and source_url not in existing_urls:
                         snippet['sources'].append({
                             'url': source_url,
                             'title': 'Fact-check source',
                             'snippet': 'External verification'
                         })
+                        existing_urls.add(source_url)  # Track newly added URLs
 
             validated_snippets.append(snippet)
 

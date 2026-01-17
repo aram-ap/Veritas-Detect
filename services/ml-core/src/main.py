@@ -90,13 +90,14 @@ class PredictRequest(BaseModel):
         description="Whether to force a new analysis (ignoring cache)"
     )
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "text": "This is a sample news article text that needs to be analyzed for misinformation...",
                 "title": "Breaking: Important News Story"
             }
         }
+    }
 
 
 class FlaggedSnippet(BaseModel):
@@ -153,8 +154,8 @@ class PredictionResponse(BaseModel):
         description="Optional fact-checked claims (only when deep_dive=true)"
     )
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "trust_score": 85,
                 "label": "Likely True",
@@ -181,6 +182,7 @@ class PredictionResponse(BaseModel):
                 ]
             }
         }
+    }
 
 
 class HealthResponse(BaseModel):
@@ -188,6 +190,8 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     model_loaded: bool
+    
+    model_config = {"protected_namespaces": ()}
 
 
 # Global predictor instance (loaded on startup)
