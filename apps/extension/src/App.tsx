@@ -84,11 +84,24 @@ function App() {
     updateCurrentTabUrl();
 
     // Re-check auth when the document becomes visible
-    // Clear highlights when panel is hidden/closed
+    // Clear highlights when panel is hidden/closed, restore when reopened
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         checkAuth();
         updateCurrentTabUrl();
+
+        // Restore highlights if we have results
+        if (result && result.flagged_snippets && result.flagged_snippets.length > 0) {
+          try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab.id) {
+              await chrome.tabs.sendMessage(tab.id, { action: 'RESTORE_HIGHLIGHTS' });
+              console.log('[Veritas] Restored highlights on panel reopen');
+            }
+          } catch (error) {
+            console.log('[Veritas] Could not restore highlights:', error);
+          }
+        }
       } else if (document.visibilityState === 'hidden') {
         // Extension panel is closing/hidden - clear highlights
         try {
@@ -199,7 +212,7 @@ function App() {
       chrome.runtime.onMessage.removeListener(handleMessage);
       clearInterval(interval);
     };
-  }, [checkAuth, authState, updateCurrentTabUrl]);
+  }, [checkAuth, authState, updateCurrentTabUrl, result]);
 
   const handleLogin = () => {
     chrome.tabs.create({ url: 'http://localhost:3000/api/auth/login' });

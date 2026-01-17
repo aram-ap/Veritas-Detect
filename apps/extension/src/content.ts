@@ -3,6 +3,7 @@
 // Global state for highlights
 let currentHighlights: { element: HTMLElement; snippetId: string }[] = [];
 let articleRoot: HTMLElement | null = null;
+let lastSnippets: FlaggedSnippet[] = []; // Store last snippets for restoration
 
 function extractArticleText(): string {
   // Try to find article content using common selectors
@@ -89,6 +90,9 @@ function highlightSnippets(snippets: FlaggedSnippet[]) {
     console.log('[Veritas] No snippets to highlight or article root not found');
     return;
   }
+
+  // Store snippets for potential restoration
+  lastSnippets = snippets;
 
   console.log(`[Veritas] Highlighting ${snippets.length} snippets`);
 
@@ -570,6 +574,22 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       sendResponse({ success: true });
     } catch (error) {
       console.error('[Veritas] Error highlighting snippets:', error);
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true; // Keep message channel open
+  } else if (request.action === 'RESTORE_HIGHLIGHTS') {
+    console.log('[Veritas] Received RESTORE_HIGHLIGHTS message');
+    try {
+      // Re-highlight using stored snippets
+      if (lastSnippets.length > 0) {
+        highlightSnippets(lastSnippets);
+        sendResponse({ success: true, restored: true });
+      } else {
+        console.log('[Veritas] No snippets to restore');
+        sendResponse({ success: true, restored: false });
+      }
+    } catch (error) {
+      console.error('[Veritas] Error restoring highlights:', error);
       sendResponse({ success: false, error: String(error) });
     }
     return true; // Keep message channel open
