@@ -77,10 +77,27 @@ class PredictRequest(BaseModel):
 
 class FlaggedSnippet(BaseModel):
     """Model for a flagged suspicious text snippet."""
-    text: str = Field(..., description="The suspicious text snippet")
-    index: List[int] = Field(..., description="[start, end] character indices")
+    text: str = Field(..., description="The suspicious text snippet (full sentence or phrase)")
+    type: Optional[str] = Field(
+        None,
+        description="Type of flag: MISINFORMATION, DISINFORMATION, or PROPAGANDA"
+    )
+    index: Optional[List[int]] = Field(None, description="[start, end] character indices")
     reason: str = Field(..., description="Reason why this snippet is flagged")
     confidence: Optional[float] = Field(None, description="Confidence score (0-1)")
+
+
+class Explanation(BaseModel):
+    """Model for explanation of the trust score."""
+    summary: str = Field(..., description="Comprehensive explanation of the score and analysis")
+    generated_by: str = Field(..., description="Source of explanation: 'gemini' or 'rule-based'")
+
+
+class FactCheckedClaim(BaseModel):
+    """Model for a fact-checked claim."""
+    claim: str = Field(..., description="The factual claim identified")
+    status: str = Field(..., description="Verification status: Verified, Unverified, Misleading, or False")
+    explanation: str = Field(..., description="Brief explanation of the verification")
 
 
 class PredictionResponse(BaseModel):
@@ -99,9 +116,17 @@ class PredictionResponse(BaseModel):
         ...,
         description="Political bias: 'Left', 'Left-Center', 'Center', 'Right-Center', or 'Right'"
     )
+    explanation: Explanation = Field(
+        ...,
+        description="Detailed explanation of why the article received this score"
+    )
     flagged_snippets: List[FlaggedSnippet] = Field(
         default=[],
         description="List of suspicious text snippets with highlighting info"
+    )
+    fact_checked_claims: Optional[List[FactCheckedClaim]] = Field(
+        default=None,
+        description="Optional fact-checked claims (only when deep_dive=true)"
     )
     
     class Config:
@@ -110,12 +135,24 @@ class PredictionResponse(BaseModel):
                 "trust_score": 85,
                 "label": "Likely True",
                 "bias": "Left-Center",
+                "explanation": {
+                    "summary": "This article received a high trust score because it uses balanced language...",
+                    "generated_by": "gemini"
+                },
                 "flagged_snippets": [
                     {
-                        "text": "shocking discovery",
-                        "index": [120, 138],
-                        "reason": "Sensationalist language",
-                        "confidence": 0.85
+                        "text": "This shocking discovery will change everything you know",
+                        "type": "MISINFORMATION",
+                        "index": [120, 176],
+                        "reason": "Sensationalist claim without verifiable evidence",
+                        "confidence": 0.92
+                    }
+                ],
+                "fact_checked_claims": [
+                    {
+                        "claim": "The economy grew by 3% last quarter",
+                        "status": "Verified",
+                        "explanation": "Official data confirms this figure"
                     }
                 ]
             }
@@ -217,10 +254,16 @@ async def predict(request: PredictRequest):
         )
     
     try:
-        logger.info(f"Processing prediction request for text of length {len(request.text)}")
+        logger.info(
+            f"Processing prediction request for text of length {len(request.text)} "
+            f"(Gemini-powered analysis enabled)"
+        )
         
-        # Run full analysis
-        result = predict_full_analysis(request.text, request.title)
+        # Run full analysis (Gemini now always enabled)
+        result = predict_full_analysis(
+            text=request.text,
+            title=request.title
+        )
         
         logger.info(
             f"Prediction complete: trust_score={result['trust_score']}, "
@@ -241,13 +284,13 @@ async def predict(request: PredictRequest):
 async def batch_predict(texts: List[str]):
     """
     Analyze multiple texts in a single request (batch processing).
-    
+
     Args:
         texts: List of article texts to analyze
-        
+
     Returns:
         List of prediction results
-        
+
     Raises:
         HTTPException: If model is not loaded or batch size exceeds limit
     """
@@ -256,22 +299,22 @@ async def batch_predict(texts: List[str]):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="ML model not loaded"
         )
-    
+
     # Limit batch size
     if len(texts) > 10:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Batch size cannot exceed 10 texts"
         )
-    
+
     try:
         results = []
         for text in texts:
-            result = predict_full_analysis(text)
+            result = predict_full_analysis(text, deep_dive=False)  # Batch uses basic mode
             results.append(result)
-        
+
         return {"predictions": results, "count": len(results)}
-        
+
     except Exception as e:
         logger.error(f"Batch prediction failed: {str(e)}", exc_info=True)
         raise HTTPException(

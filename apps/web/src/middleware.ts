@@ -5,6 +5,8 @@ export function middleware(request: NextRequest) {
   const origin = request.headers.get('origin');
   const isExtensionOrigin = origin?.startsWith('chrome-extension://');
 
+  console.log(`[Middleware] Method: ${request.method}, URL: ${request.url}, Origin: ${origin}, IsExtension: ${isExtensionOrigin}`);
+
   if (isExtensionOrigin) {
     const headers = new Headers();
     headers.set('Access-Control-Allow-Origin', origin ?? '');

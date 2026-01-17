@@ -5,9 +5,11 @@ A production-ready FastAPI service for detecting misinformation and political bi
 ## Features
 
 - **Misinformation Detection**: Uses TF-IDF + PassiveAggressiveClassifier trained on 79k news articles
-- **Trust Score**: Returns a 0-100 trust score (100 = trustworthy, 0 = fake)
+- **Trust Score**: Returns a calibrated 0-100 trust score (higher = more trustworthy)
 - **Political Bias Detection**: Identifies Left/Center/Right political bias using keyword analysis
-- **Text Highlighting**: Highlights suspicious snippets with explanations
+- **AI-Powered Sentence Flagging**: Gemini identifies problematic sentences and categorizes them as Misinformation, Disinformation, or Propaganda
+- **Smart Explanations**: Gemini-powered explanations for trust scores (falls back to rule-based if unavailable)
+- **Fact-Checking**: Gemini verifies key claims in articles
 - **REST API**: FastAPI-powered endpoints with automatic documentation
 - **Docker Support**: Containerized for easy deployment to DigitalOcean or any cloud platform
 
@@ -134,12 +136,24 @@ Analyze a news article for misinformation and bias.
   "trust_score": 85,
   "label": "Likely True",
   "bias": "Left-Center",
+  "explanation": {
+    "summary": "This article received a high trust score because it uses balanced language...",
+    "generated_by": "gemini"
+  },
   "flagged_snippets": [
     {
-      "text": "shocking discovery",
-      "index": [120, 138],
-      "reason": "Sensationalist language",
-      "confidence": 0.85
+      "text": "This shocking discovery will change everything you know",
+      "type": "MISINFORMATION",
+      "index": [120, 176],
+      "reason": "Sensationalist claim without verifiable evidence",
+      "confidence": 0.92
+    }
+  ],
+  "fact_checked_claims": [
+    {
+      "claim": "The economy grew by 3% last quarter",
+      "status": "Verified",
+      "explanation": "Official data confirms this figure"
     }
   ]
 }
@@ -325,6 +339,9 @@ LOG_LEVEL=info
 
 # Model Configuration
 MODEL_PATH=models/misinfo_model.pkl
+
+# Gemini (optional, for explanations and deep-dive fact-checking)
+GEMINI_API_KEY=your_gemini_api_key
 
 # CORS Origins (comma-separated)
 CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com

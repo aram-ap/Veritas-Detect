@@ -12,10 +12,12 @@ import joblib
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+from functools import lru_cache
 
 # Add src to path for imports
 sys.path.append(os.path.dirname(__file__))
 from preprocessing import prepare_for_model
+from gemini_explainer import GeminiExplainer
 
 
 class MisinfoPredictor:
@@ -74,21 +76,32 @@ class MisinfoPredictor:
         
         # Convert to probability-like score (0-1)
         # PassiveAggressiveClassifier doesn't have predict_proba, so we use decision_function
-        # Normalize decision score to 0-1 range using sigmoid
-        probability = 1 / (1 + np.exp(-decision_score))
+        # Apply calibrated sigmoid with temperature scaling to reduce sensitivity
+        # Temperature > 1 makes the model less confident (smoother probabilities)
+        temperature = 2.5  # Higher temperature = less extreme predictions
+        scaled_score = np.clip(decision_score / temperature, -20, 20)
+        probability = 1 / (1 + np.exp(-scaled_score))
         
-        # Calculate trust score (0-100)
-        # If prediction is 1 (Real), trust score is high
-        # If prediction is 0 (Fake), trust score is low
+        # Calculate trust score (0-100) with calibration
+        # Apply additional smoothing to avoid extreme scores like 0% or 100%
+        # Map to range [15, 85] to acknowledge uncertainty in all predictions
         if prediction == 1:
-            trust_score = int(probability * 100)
+            # For "Real" predictions, map probability to 50-85 range
+            raw_score = probability * 100
+            trust_score = int(50 + (raw_score - 50) * 0.7)
         else:
-            trust_score = int((1 - probability) * 100)
+            # For "Fake" predictions, map to 15-50 range
+            raw_score = (1 - probability) * 100
+            trust_score = int(15 + (raw_score - 15) * 0.7)
+        
+        # Ensure score stays within bounds
+        trust_score = max(15, min(85, trust_score))
         
         # Determine label based on trust score
-        if trust_score >= 70:
+        # Adjusted thresholds for new calibrated scoring range (15-85)
+        if trust_score >= 65:
             label = "Likely True"
-        elif trust_score >= 40:
+        elif trust_score >= 35:
             label = "Suspicious"
         else:
             label = "Likely Fake"
@@ -290,20 +303,44 @@ class BiasDetector:
             return "Center"
 
 
-def predict_full_analysis(text: str, title: Optional[str] = None) -> Dict:
+@lru_cache(maxsize=1)
+def get_misinfo_predictor() -> MisinfoPredictor:
+    """Return a cached predictor instance to avoid reloading the model."""
+    return MisinfoPredictor()
+
+
+@lru_cache(maxsize=1)
+def get_bias_detector() -> BiasDetector:
+    """Return a cached bias detector instance."""
+    return BiasDetector()
+
+
+@lru_cache(maxsize=1)
+def get_gemini_explainer() -> GeminiExplainer:
+    """Return a cached Gemini explainer instance."""
+    return GeminiExplainer()
+
+
+def predict_full_analysis(
+    text: str, 
+    title: Optional[str] = None,
+    deep_dive: bool = False
+) -> Dict:
     """
     Perform complete analysis: misinformation detection, bias detection, and highlighting.
     
     Args:
         text: Article text
         title: Optional article title
+        deep_dive: Whether to perform deep fact-checking with Gemini (now always enabled)
         
     Returns:
         Complete analysis dictionary ready for API response
     """
-    # Initialize predictors
-    misinfo_predictor = MisinfoPredictor()
-    bias_detector = BiasDetector()
+    # Initialize predictors (cached to avoid reloading the model each call)
+    misinfo_predictor = get_misinfo_predictor()
+    bias_detector = get_bias_detector()
+    gemini_explainer = get_gemini_explainer()
     
     # Get misinformation prediction
     misinfo_result = misinfo_predictor.predict_misinformation(text, title)
@@ -311,25 +348,44 @@ def predict_full_analysis(text: str, title: Optional[str] = None) -> Dict:
     # Get bias detection
     bias = bias_detector.detect_bias(text)
     
-    # Get suspicious snippets
-    snippets = misinfo_predictor.get_suspicious_snippets(text, title, top_n=5)
+    # Use Gemini for sentence-level flagging (always enabled now)
+    flagged_snippets = gemini_explainer.flag_suspicious_sentences(text, title, top_n=5)
     
-    # Format snippets for API response
-    flagged_snippets = []
-    for snippet in snippets:
-        flagged_snippets.append({
-            'text': snippet['text'],
-            'index': [snippet['start'], snippet['end']],
-            'reason': snippet['reason'],
-            'confidence': snippet['confidence']
-        })
+    # If Gemini flagging fails or returns nothing, fall back to ML model flagging
+    if not flagged_snippets:
+        snippets = misinfo_predictor.get_suspicious_snippets(text, title, top_n=5)
+        flagged_snippets = []
+        for snippet in snippets:
+            # Map old format to new format with type
+            flagged_snippets.append({
+                'text': snippet['text'],
+                'index': [snippet['start'], snippet['end']],
+                'type': 'MISINFORMATION',  # Default type for ML-flagged items
+                'reason': snippet['reason'],
+                'confidence': snippet['confidence']
+            })
+    
+    # Generate explanation using Gemini (always enabled)
+    explanation = gemini_explainer.generate_explanation(
+        text=text,
+        title=title,
+        trust_score=misinfo_result['trust_score'],
+        label=misinfo_result['label'],
+        bias=bias,
+        flagged_snippets=flagged_snippets
+    )
+    
+    # Always perform fact-checking with Gemini (merged deep_dive into default behavior)
+    fact_checked_claims = gemini_explainer.fact_check_claims(text, title, top_n=3)
     
     # Combine results
     result = {
         'trust_score': misinfo_result['trust_score'],
         'label': misinfo_result['label'],
         'bias': bias,
+        'explanation': explanation,
         'flagged_snippets': flagged_snippets,
+        'fact_checked_claims': fact_checked_claims if fact_checked_claims else None,
         'metadata': {
             'model_confidence': misinfo_result['confidence'],
             'prediction': misinfo_result['prediction']

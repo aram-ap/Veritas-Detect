@@ -59,24 +59,49 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    checkAuth();
-
-    // Get current tab URL
+  // Helper function to update current tab URL
+  const updateCurrentTabUrl = useCallback(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.url) {
         setCurrentUrl(tabs[0].url);
+        // Clear results when switching tabs
+        setResult(null);
+        setError(null);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+    updateCurrentTabUrl();
 
     // Re-check auth when the document becomes visible
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkAuth();
+        updateCurrentTabUrl();
+      }
+    };
+
+    // Listen for tab switches
+    const handleTabActivated = () => {
+      updateCurrentTabUrl();
+    };
+
+    // Listen for URL changes in the current tab
+    const handleTabUpdated = (tabId: number, changeInfo: { url?: string }) => {
+      if (changeInfo.url) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0]?.id === tabId) {
+            updateCurrentTabUrl();
+          }
+        });
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    chrome.tabs.onActivated.addListener(handleTabActivated);
+    chrome.tabs.onUpdated.addListener(handleTabUpdated);
 
     // Poll for auth when unauthenticated (in case user logged in via another tab)
     const interval = setInterval(() => {
@@ -87,9 +112,11 @@ function App() {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      chrome.tabs.onActivated.removeListener(handleTabActivated);
+      chrome.tabs.onUpdated.removeListener(handleTabUpdated);
       clearInterval(interval);
     };
-  }, [checkAuth, authState]);
+  }, [checkAuth, authState, updateCurrentTabUrl]);
 
   const handleLogin = () => {
     chrome.tabs.create({ url: 'http://localhost:3000/api/auth/login' });
@@ -119,7 +146,20 @@ function App() {
       }
 
       // Request text from content script
-      const response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_TEXT' });
+      let response;
+      try {
+        response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_TEXT' });
+      } catch (err) {
+        // If content script is not ready, try to inject it
+        console.log('Content script not ready, injecting...');
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        
+        // Retry message
+        response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_TEXT' });
+      }
 
       if (!response || !response.text) {
         throw new Error('Could not extract page content');
