@@ -1,0 +1,21 @@
+# DigitalOcean Build Ignore Patterns
+# Files/directories that shouldn't trigger ML backend rebuilds
+
+# Extension changes shouldn't trigger ML rebuild
+apps/extension/**
+
+# Frontend changes shouldn't trigger ML rebuild
+apps/web/**
+
+# Documentation changes
+*.md
+!services/ml-core/*.md
+
+# Config files not affecting ML
+.gitignore
+.editorconfig
+
+# Extension-specific files
+apps/extension/.env.*
+apps/extension/dist/
+apps/extension/node_modules/
