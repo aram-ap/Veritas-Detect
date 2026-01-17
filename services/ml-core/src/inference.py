@@ -16,6 +16,7 @@ from functools import lru_cache
 import logging
 import json
 import asyncio
+import datetime
 
 # Add src to path for imports
 sys.path.append(os.path.dirname(__file__))
@@ -25,8 +26,47 @@ from cache import get_cache
 from bias_data import get_bias_from_url
 from fact_checker import get_fact_checker
 from claim_validator import get_claim_validator
+from web_search import get_web_search
 
 logger = logging.getLogger(__name__)
+
+class TriageAgent:
+    """Determines if a claim requires historical fact-checking or breaking news verification."""
+    
+    def classify_claim_type(self, claim: str) -> str:
+        """
+        Classify a claim as 'BREAKING_NEWS' or 'HISTORICAL_FACT'.
+        
+        Args:
+            claim: The claim text
+            
+        Returns:
+            String classification
+        """
+        # Check for recent indicators
+        recent_keywords = [
+            'today', 'yesterday', 'this week', 'breaking', 'just now', 
+            'live', 'update', 'current', 'latest', 'recently', 'new', 'report'
+        ]
+        
+        claim_lower = claim.lower()
+        # Word boundary check for keywords to avoid partial matches
+        for kw in recent_keywords:
+            if re.search(r'\b' + re.escape(kw) + r'\b', claim_lower):
+                return "BREAKING_NEWS"
+        
+        # Check for recent years (current year and last year)
+        # Assuming current context is 2026 based on user info
+        try:
+            current_year = datetime.datetime.now().year
+            recent_years = [str(current_year), str(current_year - 1)]
+            
+            if any(year in claim for year in recent_years):
+                return "BREAKING_NEWS"
+        except:
+            pass
+            
+        return "HISTORICAL_FACT"
 
 class MisinfoPredictor:
     """Handles model inference and prediction for misinformation detection."""
@@ -372,30 +412,80 @@ def predict_full_analysis(
         # Gemini succeeded
         final_bias = db_bias if db_bias else gemini_result['bias']
 
-        # 2. External Fact-Checking for Verifiable Claims
+        # 2. Hybrid Fact-Checking Pipeline
         fact_checked_claims = []
         verifiable_claims = gemini_result.get('verifiable_claims', [])
 
         if verifiable_claims:
-            logger.info(f"Found {len(verifiable_claims)} verifiable claims, checking with external APIs...")
+            logger.info(f"Found {len(verifiable_claims)} verifiable claims, starting hybrid verification...")
             try:
                 fact_checker = get_fact_checker()
-                fact_check_results = fact_checker.check_claims(verifiable_claims, max_results_per_claim=1)
+                web_search = get_web_search()
+                triage_agent = TriageAgent()
+                
+                for claim in verifiable_claims:
+                    # Triage: Breaking vs Historical
+                    claim_type = triage_agent.classify_claim_type(claim)
+                    
+                    if claim_type == "BREAKING_NEWS":
+                        # Breaking News Route
+                        logger.info(f"Claim classified as BREAKING NEWS: '{claim}'")
+                        news_results = web_search.search_consensus(claim)
+                        credibility_score = web_search.calculate_credibility_score(news_results)
+                        
+                        # Apply consensus logic
+                        status = "Unverified"
+                        explanation = "No trusted news sources found reporting this."
+                        confidence = 0.5
+                        
+                        if credibility_score > 0.8:
+                            status = "Verified"
+                            explanation = "Confirmed by multiple trusted news outlets."
+                            confidence = credibility_score
+                        elif credibility_score < 0.2:
+                            # If no trusted sources report a "breaking" event, it's likely unsubstantiated
+                            # Double check with a general search to see if it's just obscure
+                            general_results = web_search.search_for_verification(claim, num_results=3, recent_only=True)
+                            if not general_results:
+                                status = "Unsubstantiated"
+                                explanation = "No trusted sources are reporting this event."
+                                confidence = 0.9
+                            else:
+                                status = "Unsubstantiated"
+                                explanation = "Reported only by unverified sources; pending trusted confirmation."
+                                confidence = 0.6
+                        else:
+                            status = "Mixed"
+                            explanation = "Mixed reporting or single source confirmation."
+                            confidence = 0.5
+                            
+                        fact_checked_claims.append({
+                            'claim': claim,
+                            'status': status,
+                            'explanation': explanation,
+                            'sources': [r['url'] for r in news_results[:3]],
+                            'confidence': confidence,
+                            'type': 'breaking_news'
+                        })
+                        
+                    else:
+                        # Historical Fact Route
+                        logger.info(f"Claim classified as HISTORICAL: '{claim}'")
+                        fc_results = fact_checker.check_claims([claim], max_results_per_claim=1)
+                        if fc_results:
+                            fc_result = fc_results[0]
+                            fact_checked_claims.append({
+                                'claim': fc_result.claim,
+                                'status': fc_result.status,
+                                'explanation': fc_result.explanation,
+                                'sources': fc_result.sources,
+                                'confidence': fc_result.confidence,
+                                'type': 'historical_fact'
+                            })
 
-                # Convert FactCheckResult objects to dictionaries
-                for fc_result in fact_check_results:
-                    fact_checked_claims.append({
-                        'claim': fc_result.claim,
-                        'status': fc_result.status,
-                        'explanation': fc_result.explanation,
-                        'sources': fc_result.sources,
-                        'confidence': fc_result.confidence
-                    })
-
-                logger.info(f"Completed fact-checking: {len(fact_checked_claims)} claims verified")
+                logger.info(f"Completed hybrid verification: {len(fact_checked_claims)} claims checked")
             except Exception as e:
-                logger.error(f"Fact-checking failed: {e}")
-                # Continue without fact-checking if it fails
+                logger.error(f"Hybrid verification failed: {e}")
 
         # 3. Validate flagged snippets to ensure negative assertions have sources
         logger.info("Validating flagged snippets for negative assertions...")
@@ -429,6 +519,44 @@ def predict_full_analysis(
         flagged_snippets = result.get('flagged_snippets', [])
         flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
         result['flagged_snippets'] = flagged_snippets
+        
+        # 5. Pipeline Aggregation Logic (Refine Trust Score based on verification)
+        # Differentiate between direct misinformation (harsh) and unsubstantiated claims (warnings)
+        if fact_checked_claims:
+            # Separate claims by severity
+            false_claims = [c for c in fact_checked_claims if c['status'] == 'False']
+            misleading_claims = [c for c in fact_checked_claims if c['status'] == 'Misleading']
+            unsubstantiated_claims = [c for c in fact_checked_claims if c['status'] == 'Unsubstantiated']
+            verified_claims = [c for c in fact_checked_claims if c['status'] == 'Verified']
+            
+            # Apply penalties based on severity
+            if false_claims:
+                # Direct misinformation - harsh penalty
+                logger.info(f"MAJOR: Downgrading score due to {len(false_claims)} proven false claims")
+                result['trust_score'] = min(result['trust_score'], 25)  # Cap at 25 (Likely Fake)
+                result['label'] = "Likely Fake"
+                result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
+            elif misleading_claims:
+                # Misleading information - moderate penalty
+                logger.info(f"MODERATE: Downgrading score due to {len(misleading_claims)} misleading claims")
+                result['trust_score'] = max(15, result['trust_score'] - (len(misleading_claims) * 15))
+                if result['trust_score'] < 50:
+                    result['label'] = "Suspicious"
+                result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+            elif unsubstantiated_claims:
+                # Unsubstantiated - minor penalty (warning)
+                logger.info(f"MINOR: Warning due to {len(unsubstantiated_claims)} unsubstantiated claims")
+                result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * 8))
+                if result['trust_score'] < 65:
+                    result['label'] = "Suspicious"
+                result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
+            elif verified_claims and len(verified_claims) >= len(fact_checked_claims) / 2:
+                # Boost confidence if many claims are verified
+                logger.info("Boosting score due to verified claims")
+                # Only boost if it wasn't already low
+                if result['trust_score'] > 40:
+                    result['trust_score'] = max(result['trust_score'], 80)
+                    result['label'] = "Likely True"
 
         # Save to cache
         cache.set(url or title or "", text, result)
@@ -553,27 +681,76 @@ async def predict_full_analysis_streaming(
             # Small delay to simulate processing and make streaming visible
             await asyncio.sleep(0.1)
 
-        # Fact-check claims
+        # Hybrid Fact-Checking Pipeline
         fact_checked_claims = []
         verifiable_claims = gemini_result.get('verifiable_claims', [])
 
         if verifiable_claims:
-            yield f"data: {json.dumps({'type': 'status', 'message': f'Fact-checking {len(verifiable_claims)} claims...', 'progress': 80})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Verifying {len(verifiable_claims)} claims (Hybrid Mode)...', 'progress': 80})}\n\n"
 
             try:
                 fact_checker = get_fact_checker()
-                fact_check_results = fact_checker.check_claims(verifiable_claims, max_results_per_claim=1)
-
-                for fc_result in fact_check_results:
-                    fact_checked_claims.append({
-                        'claim': fc_result.claim,
-                        'status': fc_result.status,
-                        'explanation': fc_result.explanation,
-                        'sources': fc_result.sources,
-                        'confidence': fc_result.confidence
-                    })
+                web_search = get_web_search()
+                triage_agent = TriageAgent()
+                
+                for claim in verifiable_claims:
+                    # Triage: Breaking vs Historical
+                    claim_type = triage_agent.classify_claim_type(claim)
+                    
+                    if claim_type == "BREAKING_NEWS":
+                        # Breaking News Route
+                        news_results = web_search.search_consensus(claim)
+                        credibility_score = web_search.calculate_credibility_score(news_results)
+                        
+                        # Apply consensus logic
+                        status = "Unverified"
+                        explanation = "No trusted news sources found reporting this."
+                        confidence = 0.5
+                        
+                        if credibility_score > 0.8:
+                            status = "Verified"
+                            explanation = "Confirmed by multiple trusted news outlets."
+                            confidence = credibility_score
+                        elif credibility_score < 0.2:
+                            # Double check with general search
+                            general_results = web_search.search_for_verification(claim, num_results=3, recent_only=True)
+                            if not general_results:
+                                status = "Unsubstantiated"
+                                explanation = "No trusted sources are reporting this event."
+                                confidence = 0.9
+                            else:
+                                status = "Unsubstantiated"
+                                explanation = "Reported only by unverified sources; pending trusted confirmation."
+                                confidence = 0.6
+                        else:
+                            status = "Mixed"
+                            explanation = "Mixed reporting or single source confirmation."
+                            confidence = 0.5
+                            
+                        fact_checked_claims.append({
+                            'claim': claim,
+                            'status': status,
+                            'explanation': explanation,
+                            'sources': [r['url'] for r in news_results[:3]],
+                            'confidence': confidence,
+                            'type': 'breaking_news'
+                        })
+                    else:
+                        # Historical Fact Route
+                        fc_results = fact_checker.check_claims([claim], max_results_per_claim=1)
+                        if fc_results:
+                            fc_result = fc_results[0]
+                            fact_checked_claims.append({
+                                'claim': fc_result.claim,
+                                'status': fc_result.status,
+                                'explanation': fc_result.explanation,
+                                'sources': fc_result.sources,
+                                'confidence': fc_result.confidence,
+                                'type': 'historical_fact'
+                            })
+                            
             except Exception as e:
-                logger.error(f"Fact-checking failed: {e}")
+                logger.error(f"Hybrid verification failed: {e}")
 
         # Validate flagged snippets
         yield f"data: {json.dumps({'type': 'status', 'message': 'Validating claims for sources...', 'progress': 90})}\n\n"
@@ -602,6 +779,37 @@ async def predict_full_analysis_streaming(
         # Validate and enrich
         require_sources = os.getenv('REQUIRE_SOURCES_FOR_NEGATIVE_CLAIMS', 'true').lower() == 'true'
         result = claim_validator.validate_analysis_result(preliminary_result, require_sources=require_sources)
+
+        # Apply aggregation logic to final result (same lenient logic as non-streaming)
+        if fact_checked_claims:
+            # Separate claims by severity
+            false_claims = [c for c in fact_checked_claims if c['status'] == 'False']
+            misleading_claims = [c for c in fact_checked_claims if c['status'] == 'Misleading']
+            unsubstantiated_claims = [c for c in fact_checked_claims if c['status'] == 'Unsubstantiated']
+            verified_claims = [c for c in fact_checked_claims if c['status'] == 'Verified']
+            
+            # Apply penalties based on severity
+            if false_claims:
+                # Direct misinformation - harsh penalty
+                result['trust_score'] = min(result['trust_score'], 25)
+                result['label'] = "Likely Fake"
+                result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
+            elif misleading_claims:
+                # Misleading information - moderate penalty
+                result['trust_score'] = max(15, result['trust_score'] - (len(misleading_claims) * 15))
+                if result['trust_score'] < 50:
+                    result['label'] = "Suspicious"
+                result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+            elif unsubstantiated_claims:
+                # Unsubstantiated - minor penalty (warning)
+                result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * 8))
+                if result['trust_score'] < 65:
+                    result['label'] = "Suspicious"
+                result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
+            elif verified_claims and len(verified_claims) >= len(fact_checked_claims) / 2:
+                if result['trust_score'] > 40:
+                    result['trust_score'] = max(result['trust_score'], 80)
+                    result['label'] = "Likely True"
 
         # Cache result
         cache.set(url or title or "", text, result)

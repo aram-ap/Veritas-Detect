@@ -18,6 +18,15 @@ class WebSearchService:
     Service for searching the web to verify current events and find sources.
     """
 
+    TRUSTED_NEWS_SOURCES = [
+        "reuters.com", "apnews.com", "bbc.com", "npr.org",
+        "pbs.org", "wsj.com", "bloomberg.com", "snopes.com",
+        "nytimes.com", "washingtonpost.com", "theguardian.com",
+        "ft.com", "latimes.com", "usatoday.com", "politico.com",
+        "axios.com", "abcnews.go.com", "cbsnews.com", "nbcnews.com",
+        "cnn.com"
+    ]
+
     def __init__(self, google_api_key: Optional[str] = None, search_engine_id: Optional[str] = None):
         """
         Initialize the web search service.
@@ -32,9 +41,16 @@ class WebSearchService:
         self.enabled = bool(self.google_api_key)
 
         if not self.enabled:
-            logger.warning("Google API key not found. Web search will be disabled.")
-
-        logger.info(f"WebSearchService initialized - Enabled: {self.enabled}")
+            logger.warning("=" * 70)
+            logger.warning("⚠️  GOOGLE API KEY NOT FOUND - Web Search Disabled")
+            logger.warning("Breaking news verification will not work properly.")
+            logger.warning("Set GOOGLE_API_KEY or GEMINI_API_KEY in your .env file.")
+            logger.warning("=" * 70)
+        else:
+            logger.info(f"✓ WebSearchService initialized - API key found")
+            
+        if not self.search_engine_id or self.search_engine_id == "017576662512468239146:omuauf_lfve":
+            logger.warning("Using example Custom Search Engine ID. Set GOOGLE_SEARCH_ENGINE_ID for production.")
 
     def search_for_verification(
         self,
@@ -116,16 +132,18 @@ class WebSearchService:
             return []
 
         try:
-            # Use Google News search
+            # Use Google Custom Search API
+            # Note: tbm=nws is NOT supported in Custom Search JSON API
+            # We rely on filtering results by trusted domains after retrieval
             url = "https://www.googleapis.com/customsearch/v1"
 
             params = {
                 "key": self.google_api_key,
                 "cx": self.search_engine_id,
                 "q": query,
-                "num": num_results,
-                "tbm": "nws",  # News search
-                "dateRestrict": "m1"  # Last month
+                "num": min(num_results, 10),  # API limit is 10 per request
+                "dateRestrict": "m1",  # Last month
+                "sort": "date"  # Sort by date for recent news
             }
 
             response = requests.get(url, params=params, timeout=10)
@@ -133,23 +151,71 @@ class WebSearchService:
 
             data = response.json()
 
-            # Extract news results
+            # Extract news results and filter to trusted sources
             results = []
             for item in data.get("items", []):
-                results.append({
-                    "title": item.get("title", ""),
-                    "url": item.get("link", ""),
-                    "snippet": item.get("snippet", ""),
-                    "source": self._extract_domain(item.get("link", "")),
-                    "date": item.get("pagemap", {}).get("metatags", [{}])[0].get("article:published_time", ""),
-                    "is_credible": self._is_credible_source(item.get("link", ""))
-                })
+                url = item.get("link", "")
+                # Only include results from trusted sources
+                if self._is_credible_source(url):
+                    results.append({
+                        "title": item.get("title", ""),
+                        "url": url,
+                        "snippet": item.get("snippet", ""),
+                        "source": self._extract_domain(url),
+                        "date": item.get("pagemap", {}).get("metatags", [{}])[0].get("article:published_time", ""),
+                        "is_credible": True
+                    })
+                    
+                    # Stop if we have enough results
+                    if len(results) >= num_results:
+                        break
 
             return results
 
         except Exception as e:
             logger.error(f"News search failed: {e}")
             return []
+
+    def search_consensus(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Search for consensus among trusted news sources.
+        """
+        if not self.enabled:
+            return []
+            
+        # We search specifically for news to get the latest coverage
+        # The credibility scoring handles the "trusted" filtering
+        return self.search_news(query, num_results=10)
+
+    def calculate_credibility_score(self, results: List[Dict[str, Any]]) -> float:
+        """
+        Calculate credibility score based on trusted sources consensus.
+        
+        Returns:
+            Float between 0.0 and 1.0 representing consensus strength
+        """
+        if not results:
+            return 0.0
+            
+        unique_trusted_sources = set()
+        for result in results:
+            domain = result.get('source', '') or self._extract_domain(result.get('url', ''))
+            
+            # Check if domain matches any trusted source
+            for trusted in self.TRUSTED_NEWS_SOURCES:
+                if trusted in domain.lower():
+                    unique_trusted_sources.add(trusted)
+                    
+        count = len(unique_trusted_sources)
+        
+        if count >= 3:
+            return 0.9  # High Consensus
+        elif count == 2:
+            return 0.7  # Moderate Consensus
+        elif count == 1:
+            return 0.4  # Single Source
+        else:
+            return 0.1  # No Trusted Sources
 
     def _extract_domain(self, url: str) -> str:
         """Extract the domain from a URL."""
@@ -166,29 +232,8 @@ class WebSearchService:
 
         This is a simple heuristic based on well-known credible sources.
         """
-        credible_domains = [
-            # Major news organizations
-            "reuters.com", "apnews.com", "bbc.com", "npr.org",
-            "pbs.org", "csmonitor.com", "economist.com",
-
-            # Fact-checking sites
-            "snopes.com", "factcheck.org", "politifact.com",
-            "fullfact.org", "factchecker.com",
-
-            # Academic/Research
-            "nature.com", "science.org", "sciencedirect.com",
-            "pubmed.gov", "nih.gov", "cdc.gov", "who.int",
-
-            # Government sources
-            "gov", "edu",  # Generic government and educational
-
-            # Major newspapers (generally credible)
-            "nytimes.com", "washingtonpost.com", "wsj.com",
-            "theguardian.com", "ft.com", "latimes.com"
-        ]
-
         url_lower = url.lower()
-        return any(domain in url_lower for domain in credible_domains)
+        return any(domain in url_lower for domain in self.TRUSTED_NEWS_SOURCES)
 
     def verify_claim_with_sources(
         self,

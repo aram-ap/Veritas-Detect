@@ -20,8 +20,23 @@ class GeminiExplainer:
         """
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY not found. Gemini features will be disabled.")
-            print("DEBUG: GeminiExplainer disabled because API key is missing")
+            logger.error("=" * 70)
+            logger.error("❌ CRITICAL: GEMINI_API_KEY NOT FOUND")
+            logger.error("Gemini AI analysis will be disabled.")
+            logger.error("The system will fall back to basic ML model (limited accuracy).")
+            logger.error("Set GEMINI_API_KEY in your .env file.")
+            logger.error("Get your key at: https://aistudio.google.com/app/apikey")
+            logger.error("=" * 70)
+            print("\n" + "=" * 70)
+            print("❌ CRITICAL ERROR: GEMINI_API_KEY NOT FOUND")
+            print("=" * 70)
+            print("The AI-powered misinformation detection requires a Gemini API key.")
+            print("Without it, the system will use a basic fallback model with limited accuracy.")
+            print("\nTo fix this:")
+            print("1. Get a free API key at: https://aistudio.google.com/app/apikey")
+            print("2. Add it to your .env file: GEMINI_API_KEY=your_key_here")
+            print("3. Restart the service")
+            print("=" * 70 + "\n")
             self.enabled = False
         else:
             genai.configure(api_key=self.api_key)
@@ -29,12 +44,13 @@ class GeminiExplainer:
             # Use the specific model requested by user, or fallback
             requested_model = os.getenv("GEMINI_MODEL", model_name)
 
-            print(f"DEBUG: Initializing Gemini with model: {requested_model}")
+            print(f"✓ Initializing Gemini with model: {requested_model}")
             try:
                 self.model_name = requested_model
                 # Initialize model (Google Search grounding enabled via generation config)
                 self.model = genai.GenerativeModel(self.model_name)
-                print("DEBUG: Gemini model initialized successfully")
+                logger.info(f"✓ Gemini model '{self.model_name}' initialized successfully")
+                print(f"✓ Gemini model '{self.model_name}' initialized successfully")
             except Exception as e:
                 print(f"DEBUG: Failed to initialize requested model {requested_model}: {e}")
                 print("DEBUG: Attempting fallback to 'gemini-2.0-flash-exp'...")

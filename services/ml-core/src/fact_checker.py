@@ -54,9 +54,17 @@ class FactCheckService:
         self.serp_enabled = bool(self.serp_api_key)
 
         if not self.google_enabled:
-            logger.warning("Google Fact Check API key not found. Fact-checking will be limited.")
+            logger.warning("=" * 70)
+            logger.warning("⚠️  GOOGLE FACT CHECK API KEY NOT FOUND")
+            logger.warning("Historical fact-checking will be limited.")
+            logger.warning("Set GOOGLE_FACT_CHECK_API_KEY in your .env file.")
+            logger.warning("Get your key at: https://developers.google.com/fact-check/tools/api")
+            logger.warning("=" * 70)
+        
+        if not self.serp_enabled:
+            logger.info("ℹ️  SerpAPI not configured (optional). Set SERP_API_KEY for enhanced news verification.")
 
-        logger.info(f"FactCheckService initialized - Google: {self.google_enabled}, SerpAPI: {self.serp_enabled}")
+        logger.info(f"✓ FactCheckService initialized - Google: {self.google_enabled}, SerpAPI: {self.serp_enabled}")
 
     def check_claims(
         self,
