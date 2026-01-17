@@ -564,13 +564,25 @@ function scrollToSnippet(snippetIndex: number) {
       block: 'center'
     });
 
-    // Flash all occurrences of this snippet
+    // Add expanded class to show border/outline effect
+    highlights.forEach(highlight => {
+      highlight.element.classList.add('veritas-expanded');
+    });
+
+    // Flash all occurrences of this snippet with pulse animation
     highlights.forEach(highlight => {
       highlight.element.style.animation = 'none';
       setTimeout(() => {
         highlight.element.style.animation = 'veritas-pulse 0.5s ease-in-out 3';
       }, 10);
     });
+
+    // After animation completes, remove expanded class
+    setTimeout(() => {
+      highlights.forEach(highlight => {
+        highlight.element.classList.remove('veritas-expanded');
+      });
+    }, 2000);
 
     console.log(`[Veritas] Scrolled to snippet ${snippetIndex} (${highlights.length} occurrence(s))`);
   } else {
