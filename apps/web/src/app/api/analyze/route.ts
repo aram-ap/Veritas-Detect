@@ -1,4 +1,5 @@
 import { auth0 } from '@/lib/auth0';
+import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
 interface AnalyzeRequest {
@@ -53,11 +54,56 @@ export async function POST(req: Request) {
     const data = await response.json();
     console.log('[Next.js] Python response data:', JSON.stringify(data).substring(0, 200) + '...');
 
+    const score = data.score ?? data.trust_score ?? 50;
+    const flaggedSnippets = data.flagged_snippets || [];
+    const hasMisinformation = score < 70 || flaggedSnippets.length > 0;
+    
+    // Extract unique tags from flagged snippets
+    const tags = new Set<string>();
+    flaggedSnippets.forEach((snippet: any) => {
+      if (snippet.tags && Array.isArray(snippet.tags)) {
+        snippet.tags.forEach((tag: string) => tags.add(tag));
+      }
+    });
+
+    // Track the analysis in the database
+    try {
+      // Get or create user profile
+      let userProfile = await prisma.userProfile.findUnique({
+        where: { auth0Id: session.user.sub }
+      });
+
+      if (!userProfile) {
+        userProfile = await prisma.userProfile.create({
+          data: {
+            auth0Id: session.user.sub,
+            email: session.user.email,
+            name: session.user.name,
+          }
+        });
+      }
+
+      // Record the analysis
+      await prisma.analysisRecord.create({
+        data: {
+          userId: userProfile.id,
+          url: body.url || null,
+          title: body.title || null,
+          trustScore: score,
+          hasMisinformation,
+          flaggedTags: JSON.stringify(Array.from(tags)),
+        }
+      });
+    } catch (dbError) {
+      console.error('Failed to record analysis in database:', dbError);
+      // Continue even if database tracking fails
+    }
+
     // Return the analysis results
     return NextResponse.json({
-      score: data.score ?? data.trust_score ?? 50,
+      score,
       bias: data.bias || 'unknown',
-      flagged_snippets: data.flagged_snippets || [],
+      flagged_snippets: flaggedSnippets,
       summary: data.explanation?.summary || data.summary || undefined,
       metadata: data.metadata || undefined
     });
