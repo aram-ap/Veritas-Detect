@@ -36,6 +36,13 @@ export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex }: 
     );
   }
 
+  // Sort snippets by their location in the page (by index)
+  const sortedSnippets = [...snippets].sort((a, b) => {
+    const aIndex = a.index?.[0] ?? Infinity;
+    const bIndex = b.index?.[0] ?? Infinity;
+    return aIndex - bIndex;
+  });
+
   const handleSnippetClick = async (index: number) => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -54,7 +61,7 @@ export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex }: 
     <div className="mt-6 w-full">
       <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Flagged Content</p>
       <div className="flex flex-col gap-3">
-        {snippets.map((snippet, idx) => (
+        {sortedSnippets.map((snippet, idx) => (
           <SnippetItem
             key={idx}
             snippet={snippet}

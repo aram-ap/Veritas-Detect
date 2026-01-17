@@ -11,9 +11,11 @@ import re
 import joblib
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, Iterator
 from functools import lru_cache
 import logging
+import json
+import asyncio
 
 # Add src to path for imports
 sys.path.append(os.path.dirname(__file__))
@@ -22,7 +24,6 @@ from gemini_explainer import GeminiExplainer
 from cache import get_cache
 from bias_data import get_bias_from_url
 from fact_checker import get_fact_checker
-from web_search import get_web_search
 
 logger = logging.getLogger(__name__)
 
@@ -395,32 +396,9 @@ def predict_full_analysis(
                 logger.error(f"Fact-checking failed: {e}")
                 # Continue without fact-checking if it fails
 
-        # 3. Web Search for Current Events Verification
+        # 3. Sort flagged snippets by their location in the text (by index)
         flagged_snippets = gemini_result.get('flagged_snippets', [])
-        for snippet in flagged_snippets:
-            # Check if this snippet needs verification
-            if snippet.get('needs_verification', False):
-                search_query = snippet.get('search_query') or snippet.get('text', '')
-
-                logger.info(f"Verifying flagged snippet with web search: {search_query[:50]}...")
-
-                try:
-                    web_search = get_web_search()
-                    verification_result = web_search.verify_claim_with_sources(
-                        snippet.get('text', ''),
-                        search_query=search_query
-                    )
-
-                    # Add sources to the snippet
-                    snippet['sources'] = verification_result.get('sources', [])
-                    snippet['verification_status'] = verification_result.get('status', 'Unverified')
-                    snippet['verification_confidence'] = verification_result.get('confidence', 0.0)
-
-                    logger.info(f"Verification complete: {verification_result.get('status')}")
-                except Exception as e:
-                    logger.error(f"Web search verification failed: {e}")
-                    snippet['sources'] = []
-                    snippet['verification_status'] = 'Verification Failed'
+        flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
 
         result = {
             'trust_score': gemini_result['trust_score'],
@@ -490,5 +468,130 @@ def predict_full_analysis(
     
     # Save to cache even for fallback? Yes.
     cache.set(url or title or "", text, result)
-    
+
     return result
+
+
+async def predict_full_analysis_streaming(
+    text: str,
+    title: Optional[str] = None,
+    url: Optional[str] = None,
+    force_refresh: bool = False
+) -> Iterator[str]:
+    """
+    Stream analysis results incrementally as they become available.
+
+    Yields SSE-formatted strings with partial results.
+
+    Args:
+        text: Article text
+        title: Optional article title
+        url: Optional article URL
+        force_refresh: Whether to ignore cache
+
+    Yields:
+        SSE-formatted strings with partial analysis data
+    """
+    # Yield initial status
+    yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'progress': 0})}\n\n"
+
+    cache = get_cache()
+
+    # Check cache first
+    if not force_refresh:
+        cached_result = cache.get(url or title or "", text)
+        if cached_result:
+            yield f"data: {json.dumps({'type': 'complete', 'result': cached_result})}\n\n"
+            return
+
+    # Initialize predictors
+    yield f"data: {json.dumps({'type': 'status', 'message': 'Loading AI models...', 'progress': 10})}\n\n"
+
+    misinfo_predictor = get_misinfo_predictor()
+    bias_detector = get_bias_detector()
+    gemini_explainer = get_gemini_explainer()
+
+    # Determine bias
+    yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing political bias...', 'progress': 20})}\n\n"
+
+    db_bias = get_bias_from_url(url)
+
+    # Try Gemini Analysis
+    yield f"data: {json.dumps({'type': 'status', 'message': 'AI analyzing content for misinformation...', 'progress': 30})}\n\n"
+
+    gemini_result = gemini_explainer.analyze_content(text, title)
+
+    if gemini_result["trust_score"] != 50 or gemini_result["label"] != "Unknown":
+        # Gemini succeeded
+        final_bias = db_bias if db_bias else gemini_result['bias']
+
+        # Yield initial results (basic analysis)
+        yield f"data: {json.dumps({'type': 'partial', 'trust_score': gemini_result['trust_score'], 'label': gemini_result['label'], 'bias': final_bias, 'progress': 50})}\n\n"
+
+        # Sort and yield snippets incrementally
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Finding flagged content...', 'progress': 60})}\n\n"
+
+        flagged_snippets = gemini_result.get('flagged_snippets', [])
+        flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
+
+        # Yield snippets as they're processed
+        for i, snippet in enumerate(flagged_snippets):
+            progress = 60 + (i + 1) / len(flagged_snippets) * 20  # 60-80% progress
+            yield f"data: {json.dumps({'type': 'snippet', 'snippet': snippet, 'progress': progress})}\n\n"
+            # Small delay to simulate processing and make streaming visible
+            await asyncio.sleep(0.1)
+
+        # Fact-check claims
+        fact_checked_claims = []
+        verifiable_claims = gemini_result.get('verifiable_claims', [])
+
+        if verifiable_claims:
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Fact-checking {len(verifiable_claims)} claims...', 'progress': 80})}\n\n"
+
+            try:
+                fact_checker = get_fact_checker()
+                fact_check_results = fact_checker.check_claims(verifiable_claims, max_results_per_claim=1)
+
+                for fc_result in fact_check_results:
+                    fact_checked_claims.append({
+                        'claim': fc_result.claim,
+                        'status': fc_result.status,
+                        'explanation': fc_result.explanation,
+                        'sources': fc_result.sources,
+                        'confidence': fc_result.confidence
+                    })
+            except Exception as e:
+                logger.error(f"Fact-checking failed: {e}")
+
+        # Complete result
+        result = {
+            'trust_score': gemini_result['trust_score'],
+            'label': gemini_result['label'],
+            'bias': final_bias,
+            'explanation': {
+                'summary': gemini_result.get('summary', 'Analysis by Gemini'),
+                'generated_by': 'gemini'
+            },
+            'flagged_snippets': flagged_snippets,
+            'fact_checked_claims': fact_checked_claims if fact_checked_claims else None,
+            'metadata': {
+                'model': 'gemini-3-flash-preview',
+                'source': 'ai_generated',
+                'bias_source': 'database' if db_bias else 'ai_generated',
+                'fact_checks_performed': len(fact_checked_claims)
+            }
+        }
+
+        # Cache result
+        cache.set(url or title or "", text, result)
+
+        # Yield complete signal
+        yield f"data: {json.dumps({'type': 'complete', 'result': result, 'progress': 100})}\n\n"
+
+    else:
+        # Gemini failed, use fallback (simplified for streaming)
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Using fallback analysis...', 'progress': 90})}\n\n"
+
+        # Call non-streaming version for fallback
+        result = predict_full_analysis(text, title, url, force_refresh)
+        yield f"data: {json.dumps({'type': 'complete', 'result': result, 'progress': 100})}\n\n"

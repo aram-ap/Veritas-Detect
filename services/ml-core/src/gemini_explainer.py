@@ -13,7 +13,7 @@ class GeminiExplainer:
     def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-3-flash-preview"):
         """
         Initialize Gemini Explainer.
-        
+
         Args:
             api_key: Google Gemini API Key. If None, tries to get from env GEMINI_API_KEY.
             model_name: Model to use. Defaults to gemini-3-flash-preview as requested.
@@ -28,13 +28,12 @@ class GeminiExplainer:
             self.enabled = True
             # Use the specific model requested by user, or fallback
             requested_model = os.getenv("GEMINI_MODEL", model_name)
-            
+
             print(f"DEBUG: Initializing Gemini with model: {requested_model}")
             try:
                 self.model_name = requested_model
+                # Initialize model (Google Search grounding enabled via generation config)
                 self.model = genai.GenerativeModel(self.model_name)
-                # Test the model with a dummy generation to ensure it works
-                # self.model.generate_content("test") # Too expensive/slow to do on init?
                 print("DEBUG: Gemini model initialized successfully")
             except Exception as e:
                 print(f"DEBUG: Failed to initialize requested model {requested_model}: {e}")
@@ -66,9 +65,10 @@ class GeminiExplainer:
         IMPORTANT CONTEXT:
         - Today's date is: {current_date}
         - Current year: {current_year}
-        - You have access to information up to your training cutoff (likely 2024 or earlier)
-        - For claims about events after your cutoff, flag them for verification rather than assuming they're false
-        - Articles dated in the future relative to your knowledge are likely legitimate news, not misinformation
+        - You have access to Google Search for fact-checking and verification
+        - USE GOOGLE SEARCH to verify claims about recent events, statistics, or facts you're uncertain about
+        - For claims about events after your training cutoff, SEARCH before flagging them as false
+        - Include search results as sources when you verify information
 
         Analyze the following text for misinformation, bias, and logical fallacies.
 
@@ -87,8 +87,13 @@ class GeminiExplainer:
                     "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy">,
                     "reason": <concise explanation>,
                     "severity": <"low", "medium", "high">,
-                    "needs_verification": <boolean - true if claim is about recent events you can't verify>,
-                    "search_query": <optional string - specific search query to verify this claim, only if needs_verification is true>
+                    "sources": [
+                        {{
+                            "title": <source title>,
+                            "url": <source URL>,
+                            "snippet": <relevant excerpt>
+                        }}
+                    ] (optional - include if you used Google Search to verify this)
                 }}
             ],
             "verifiable_claims": [
@@ -115,12 +120,15 @@ class GeminiExplainer:
         """
 
         try:
-            print(f"DEBUG: Sending request to Gemini ({self.model_name})...")
-            # Remove response_mime_type as it's not supported in older SDK versions
-            # response = self.model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            
-            # Instead, we just ask for JSON in the prompt (which we already did) and parse the text manually
-            response = self.model.generate_content(prompt)
+            print(f"DEBUG: Sending request to Gemini ({self.model_name}) with Google Search grounding...")
+
+            # Enable Google Search grounding via tools parameter in generate_content
+            tools = [{"google_search_retrieval": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}}}]
+
+            response = self.model.generate_content(
+                prompt,
+                tools=tools
+            )
             print("DEBUG: Received response from Gemini")
             
             # Extract JSON from response text

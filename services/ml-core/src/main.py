@@ -13,6 +13,7 @@ import sys
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import logging
 from dotenv import load_dotenv
@@ -32,7 +33,7 @@ if api_key:
     print(f"DEBUG: Found GEMINI_API_KEY: {masked_key}")
 else:
     print("DEBUG: GEMINI_API_KEY not found in environment")
-from inference import predict_full_analysis
+from inference import predict_full_analysis, predict_full_analysis_streaming
 
 # Configure logging
 logging.basicConfig(
@@ -307,6 +308,51 @@ async def predict(request: PredictRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
+
+
+@app.post("/predict/stream", tags=["Prediction"])
+async def predict_stream(request: PredictRequest):
+    """
+    Stream analysis results incrementally as they become available.
+
+    This endpoint provides real-time updates during analysis using Server-Sent Events (SSE).
+    Results are sent as they're computed, allowing for progressive UI updates.
+
+    Args:
+        request: PredictRequest containing text and optional title
+
+    Returns:
+        StreamingResponse with SSE-formatted data
+
+    Event types:
+        - status: Progress updates (e.g., "Analyzing content...")
+        - partial: Initial results (trust score, label, bias)
+        - snippet: Individual flagged content as it's found
+        - complete: Final complete result
+
+    Raises:
+        HTTPException: If model is not loaded or analysis fails
+    """
+    # Check if model is loaded
+    if not predictor_loaded:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ML model not loaded. Please train the model first using: python src/training.py"
+        )
+
+    logger.info(
+        f"Processing streaming prediction request for text of length {len(request.text)}"
+    )
+
+    return StreamingResponse(
+        predict_full_analysis_streaming(
+            text=request.text,
+            title=request.title,
+            url=request.url,
+            force_refresh=request.force_refresh
+        ),
+        media_type="text/event-stream"
+    )
 
 
 @app.post("/batch-predict", tags=["Prediction"])
