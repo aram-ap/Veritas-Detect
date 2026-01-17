@@ -43,24 +43,37 @@ function createPrismaClient() {
     console.log('⚠ SSL disabled - not recommended for production');
   }
 
-  // Configure connection pool for serverless environment
+  // Configure connection pool for serverless environment with PgBouncer
+  // Using pooled connection (port 25061) with reasonable timeouts
   const connectionTimeout = parseInt(process.env.DATABASE_CONNECTION_TIMEOUT || '10000', 10);
-  const queryTimeout = parseInt(process.env.DATABASE_QUERY_TIMEOUT || '20000', 10);
-  
-  const pool = new Pool({ 
+  const queryTimeout = parseInt(process.env.DATABASE_QUERY_TIMEOUT || '10000', 10);
+
+  console.log(`[Prisma] Connection timeout: ${connectionTimeout}ms, Query timeout: ${queryTimeout}ms`);
+
+  const pool = new Pool({
     connectionString,
     ssl: sslConfig,
-    // Serverless-optimized settings
-    max: 1, // Limit to 1 connection per serverless function
-    idleTimeoutMillis: 10000, // Close idle connections after 10 seconds
-    connectionTimeoutMillis: connectionTimeout, // Configurable: 10 seconds default
+    // Serverless-optimized settings for PgBouncer (transaction mode)
+    max: 1, // Single connection per serverless function
+    min: 0, // Don't maintain idle connections
+    idleTimeoutMillis: 10000, // Close idle connections quickly
+    connectionTimeoutMillis: connectionTimeout, // Reasonable timeout with pooled connection
     allowExitOnIdle: true, // Allow the pool to exit when idle
-    // Query timeout settings for PostgreSQL
-    statement_timeout: queryTimeout, // Configurable: 20 seconds default
-    query_timeout: queryTimeout, // Configurable: 20 seconds default
+    // Note: statement_timeout and query_timeout are NOT supported by PgBouncer in transaction mode
     // Keep-alive to prevent connection drops
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
+    // Application identifier for DB logs
+    application_name: 'veritas-web',
+  });
+  
+  // Log connection errors for debugging
+  pool.on('error', (err) => {
+    console.error('[Prisma Pool] Unexpected error on idle client:', err);
+  });
+  
+  pool.on('connect', () => {
+    console.log('[Prisma Pool] New client connected');
   });
   
   const adapter = new PrismaPg(pool);
