@@ -130,9 +130,10 @@ class GeminiExplainer:
             "flagged_snippets": [
                 {{
                     "text": <exact substring from text>,
-                    "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy">,
+                    "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy", "Quoted Misinformation", "Quoted Disinformation", "Quoted Propaganda", "Quoted Fallacy">,
                     "reason": <concise explanation>,
-                    "severity": <"low", "medium", "high">
+                    "severity": <"low", "medium", "high">,
+                    "is_quote": <boolean, true if this is a direct quote from someone>
                 }}
             ],
             "verifiable_claims": [
@@ -148,6 +149,20 @@ class GeminiExplainer:
         - "Propaganda": Content designed to manipulate emotions/opinions rather than inform.
         - "Logical Fallacy": Flawed reasoning (ad hominem, straw man, etc.).
         - "Bias": Assess the political leaning based on tone, framing, and omission.
+
+        CRITICAL: DISTINGUISH BETWEEN ARTICLE CONTENT AND QUOTED CONTENT:
+        - Identify if flagged text is a DIRECT QUOTE from a person (indicated by quotation marks, "said X", "according to Y", etc.)
+        - If flagged content is a quote:
+          * Set "is_quote": true
+          * Prefix the type with "Quoted" (e.g., "Quoted Misinformation" instead of "Misinformation")
+          * In the reason, mention WHO said it (e.g., "According to Senator X, ..." or "Quote from official Y...")
+        - If flagged content is the article's own assertion:
+          * Set "is_quote": false
+          * Use standard types (Misinformation, Disinformation, etc.)
+        - Examples:
+          * Article says: "The event never happened" → is_quote: false, type: "Misinformation"
+          * Quote: 'Senator X claimed "this event never happened"' → is_quote: true, type: "Quoted Misinformation"
+          * Article framing: "Critics argue the policy is tyrannical" → is_quote: true, type: "Quoted Propaganda"
 
         CRITICAL RULES FOR RECENT EVENTS (2025-2026):
         - DO NOT flag recent events as false or fabricated based solely on your training data

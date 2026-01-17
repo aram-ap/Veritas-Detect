@@ -528,34 +528,58 @@ def predict_full_analysis(
         
         # 5. Pipeline Aggregation Logic (Refine Trust Score based on verification)
         # Differentiate between direct misinformation (harsh) and unsubstantiated claims (warnings)
+        # Also differentiate between article's own claims vs quoted claims
         if fact_checked_claims:
             # Separate claims by severity
             false_claims = [c for c in fact_checked_claims if c['status'] == 'False']
             misleading_claims = [c for c in fact_checked_claims if c['status'] == 'Misleading']
             unsubstantiated_claims = [c for c in fact_checked_claims if c['status'] == 'Unsubstantiated']
             verified_claims = [c for c in fact_checked_claims if c['status'] == 'Verified']
-            
-            # Apply penalties based on severity
+
+            # Check if problematic claims come from quotes vs article content
+            # Count non-quoted snippets with issues
+            non_quoted_snippets = [s for s in flagged_snippets if not s.get('is_quote', False)]
+            non_quoted_misinfo = [s for s in non_quoted_snippets if 'misinformation' in s.get('type', '').lower() or 'disinformation' in s.get('type', '').lower()]
+
+            # Apply penalties based on severity - but reduce penalties if issues are mostly in quotes
+            quote_ratio = 1 - (len(non_quoted_snippets) / max(len(flagged_snippets), 1))
+            penalty_multiplier = 1.0 if quote_ratio < 0.3 else (1.0 - quote_ratio * 0.5)  # Reduce penalties if 30%+ are quotes
+
             if false_claims:
-                # Direct misinformation - harsh penalty
-                logger.info(f"MAJOR: Downgrading score due to {len(false_claims)} proven false claims")
-                result['trust_score'] = min(result['trust_score'], 25)  # Cap at 25 (Likely Fake)
-                result['label'] = "Likely Fake"
-                result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
+                # Direct misinformation - harsh penalty (but less harsh if in quotes)
+                penalty = int(25 * penalty_multiplier) if penalty_multiplier < 1.0 else 25
+                logger.info(f"MAJOR: Downgrading score due to {len(false_claims)} proven false claims (penalty_multiplier: {penalty_multiplier:.2f})")
+                result['trust_score'] = min(result['trust_score'], max(penalty, 35))  # Cap at 25-35 depending on quote ratio
+                result['label'] = "Likely Fake" if penalty_multiplier > 0.7 else "Suspicious"
+
+                if len(non_quoted_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
+                else:
+                    result['explanation']['summary'] += f" Contains {len(false_claims)} false claim(s) in quoted statements."
             elif misleading_claims:
                 # Misleading information - moderate penalty
-                logger.info(f"MODERATE: Downgrading score due to {len(misleading_claims)} misleading claims")
-                result['trust_score'] = max(15, result['trust_score'] - (len(misleading_claims) * 15))
+                penalty = int(15 * penalty_multiplier) if penalty_multiplier < 1.0 else 15
+                logger.info(f"MODERATE: Downgrading score due to {len(misleading_claims)} misleading claims (penalty: {penalty})")
+                result['trust_score'] = max(15, result['trust_score'] - (len(misleading_claims) * penalty))
                 if result['trust_score'] < 50:
                     result['label'] = "Suspicious"
-                result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+
+                if len(non_quoted_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+                else:
+                    result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s) in quoted statements."
             elif unsubstantiated_claims:
                 # Unsubstantiated - minor penalty (warning)
-                logger.info(f"MINOR: Warning due to {len(unsubstantiated_claims)} unsubstantiated claims")
-                result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * 8))
+                penalty = int(8 * penalty_multiplier) if penalty_multiplier < 1.0 else 8
+                logger.info(f"MINOR: Warning due to {len(unsubstantiated_claims)} unsubstantiated claims (penalty: {penalty})")
+                result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * penalty))
                 if result['trust_score'] < 65:
                     result['label'] = "Suspicious"
-                result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
+
+                if len(non_quoted_misinfo) > 0:
+                    result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
+                else:
+                    result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) in quotes could not be verified."
             elif verified_claims and len(verified_claims) >= len(fact_checked_claims) / 2:
                 # Boost confidence if many claims are verified
                 logger.info("Boosting score due to verified claims")
@@ -793,31 +817,56 @@ async def predict_full_analysis_streaming(
         )
 
         # Apply aggregation logic to final result (same lenient logic as non-streaming)
+        # Also handle quoted vs non-quoted content
         if fact_checked_claims:
             # Separate claims by severity
             false_claims = [c for c in fact_checked_claims if c['status'] == 'False']
             misleading_claims = [c for c in fact_checked_claims if c['status'] == 'Misleading']
             unsubstantiated_claims = [c for c in fact_checked_claims if c['status'] == 'Unsubstantiated']
             verified_claims = [c for c in fact_checked_claims if c['status'] == 'Verified']
-            
+
+            # Get flagged snippets for quote analysis
+            final_snippets = result.get('flagged_snippets', [])
+            non_quoted_snippets = [s for s in final_snippets if not s.get('is_quote', False)]
+            non_quoted_misinfo = [s for s in non_quoted_snippets if 'misinformation' in s.get('type', '').lower() or 'disinformation' in s.get('type', '').lower()]
+
+            # Calculate penalty multiplier based on quote ratio
+            quote_ratio = 1 - (len(non_quoted_snippets) / max(len(final_snippets), 1))
+            penalty_multiplier = 1.0 if quote_ratio < 0.3 else (1.0 - quote_ratio * 0.5)
+
             # Apply penalties based on severity
             if false_claims:
-                # Direct misinformation - harsh penalty
-                result['trust_score'] = min(result['trust_score'], 25)
-                result['label'] = "Likely Fake"
-                result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
+                # Direct misinformation - harsh penalty (but less harsh if in quotes)
+                penalty = int(25 * penalty_multiplier) if penalty_multiplier < 1.0 else 25
+                result['trust_score'] = min(result['trust_score'], max(penalty, 35))
+                result['label'] = "Likely Fake" if penalty_multiplier > 0.7 else "Suspicious"
+
+                if len(non_quoted_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
+                else:
+                    result['explanation']['summary'] += f" Contains {len(false_claims)} false claim(s) in quoted statements."
             elif misleading_claims:
                 # Misleading information - moderate penalty
-                result['trust_score'] = max(15, result['trust_score'] - (len(misleading_claims) * 15))
+                penalty = int(15 * penalty_multiplier) if penalty_multiplier < 1.0 else 15
+                result['trust_score'] = max(15, result['trust_score'] - (len(misleading_claims) * penalty))
                 if result['trust_score'] < 50:
                     result['label'] = "Suspicious"
-                result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+
+                if len(non_quoted_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+                else:
+                    result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s) in quoted statements."
             elif unsubstantiated_claims:
                 # Unsubstantiated - minor penalty (warning)
-                result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * 8))
+                penalty = int(8 * penalty_multiplier) if penalty_multiplier < 1.0 else 8
+                result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * penalty))
                 if result['trust_score'] < 65:
                     result['label'] = "Suspicious"
-                result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
+
+                if len(non_quoted_misinfo) > 0:
+                    result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
+                else:
+                    result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) in quotes could not be verified."
             elif verified_claims and len(verified_claims) >= len(fact_checked_claims) / 2:
                 if result['trust_score'] > 40:
                     result['trust_score'] = max(result['trust_score'], 80)

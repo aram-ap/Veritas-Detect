@@ -7,6 +7,7 @@ export interface FlaggedSnippet {
   reason: string;
   confidence?: number;
   severity?: 'low' | 'medium' | 'high';
+  is_quote?: boolean;
   sources?: Array<{
     title: string;
     url: string;
@@ -91,8 +92,20 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
   ({ snippet, index, onSnippetClick, isSelected }, ref) => {
     const [expanded, setExpanded] = useState(false);
 
-    const getColors = (type: string = '') => {
+    const getColors = (type: string = '', isQuote: boolean = false) => {
       const t = type.toLowerCase();
+
+      // If it's quoted content, use blue color scheme
+      if (isQuote || t.includes('quoted')) {
+        if (t.includes('misinformation') || t.includes('disinformation')) {
+          return 'bg-blue-500/15 border-blue-500/40 text-blue-300';
+        }
+        if (t.includes('propaganda')) return 'bg-sky-500/15 border-sky-500/40 text-sky-300';
+        if (t.includes('fallacy')) return 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300';
+        return 'bg-blue-600/15 border-blue-600/40 text-blue-200';
+      }
+
+      // Regular (non-quoted) content colors
       if (t.includes('misinformation')) return 'bg-red-500/10 border-red-500/30 text-red-400';
       if (t.includes('disinformation')) return 'bg-rose-900/20 border-rose-700/30 text-rose-400';
       if (t.includes('propaganda')) return 'bg-orange-500/10 border-orange-500/30 text-orange-400';
@@ -100,7 +113,7 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
       return 'bg-slate-700/30 border-slate-600/30 text-gray-300';
     };
 
-    const colors = getColors(snippet.type);
+    const colors = getColors(snippet.type, snippet.is_quote);
 
     const handleClick = (e: React.MouseEvent) => {
       // If clicking on the expand button area, toggle expansion
@@ -121,10 +134,18 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
       >
       <div className="p-3 flex items-start justify-between gap-2">
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-xs font-bold uppercase tracking-wide opacity-80">
               {snippet.type || 'Suspicious Content'}
             </span>
+            {snippet.is_quote && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/30 border border-blue-400/30 flex items-center gap-1">
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
+                </svg>
+                QUOTE
+              </span>
+            )}
             {snippet.severity && (
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full bg-black/20 uppercase`}>
                 {snippet.severity}
@@ -139,7 +160,9 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
           <p className="text-sm font-medium leading-snug line-clamp-2">
             "{snippet.text}"
           </p>
-          <p className="text-[10px] opacity-60 mt-1">Click to jump to location on page</p>
+          <p className="text-[10px] opacity-60 mt-1">
+            {snippet.is_quote ? 'Quoted content - ' : ''}Click to jump to location on page
+          </p>
         </div>
         <button
           className="expand-button flex-shrink-0"
@@ -156,6 +179,18 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
 
       {expanded && (
         <div className="px-3 pb-3 pt-0 text-sm opacity-90 border-t border-black/10 mt-1 pt-2">
+          {snippet.is_quote && (
+            <div className="mb-3 p-2 rounded-lg bg-blue-500/10 border border-blue-400/20">
+              <p className="text-xs font-semibold opacity-80 uppercase mb-1 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
+                </svg>
+                Quoted Content
+              </p>
+              <p className="text-xs opacity-70">This is quoted content from a source, not the article's own claim. The article's trustworthiness may not be affected by quoted misinformation.</p>
+            </div>
+          )}
+
           <p className="mb-1 font-semibold text-xs opacity-70 uppercase">Analysis:</p>
           <p className="mb-3">{snippet.reason}</p>
 
@@ -173,13 +208,13 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
           )}
 
           {/* Sources */}
-          {snippet.sources && snippet.sources.length > 0 && (
+          {snippet.sources && snippet.sources.length > 0 ? (
             <div>
               <p className="mb-2 font-semibold text-xs opacity-70 uppercase flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
-                Sources Found:
+                Sources Found ({snippet.sources.length}):
               </p>
               <div className="space-y-2">
                 {snippet.sources.map((source, idx) => (
@@ -199,7 +234,7 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{source.title}</p>
-                        <p className="text-[10px] opacity-60 truncate">{source.source}</p>
+                        <p className="text-[10px] opacity-60 truncate">{source.source || source.url}</p>
                         {source.snippet && (
                           <p className="text-[10px] opacity-70 mt-1 line-clamp-2">{source.snippet}</p>
                         )}
@@ -212,6 +247,8 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
                 ))}
               </div>
             </div>
+          ) : (
+            <div className="text-xs opacity-50 italic">No sources found for verification.</div>
           )}
         </div>
       )}

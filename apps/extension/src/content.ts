@@ -81,6 +81,14 @@ interface FlaggedSnippet {
   index?: number[];
   reason: string;
   severity?: 'low' | 'medium' | 'high';
+  is_quote?: boolean;
+  sources?: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    source: string;
+    is_credible: boolean;
+  }>;
 }
 
 function highlightSnippets(snippets: FlaggedSnippet[]) {
@@ -269,7 +277,7 @@ function highlightSingleSnippet(
           highlight.setAttribute('data-veritas-snippet-id', `${snippetId}-${foundCount}`);
           highlight.setAttribute('data-snippet-index', String(idx));
           highlight.className = 'veritas-highlight';
-          highlight.style.cssText = getHighlightStyle(snippet.type, snippet.severity);
+          highlight.style.cssText = getHighlightStyle(snippet.type, snippet.severity, snippet.is_quote);
           highlight.title = `${snippet.type || 'Flagged'}: Click to expand`;
 
           // Wrap the range with the highlight
@@ -365,11 +373,25 @@ function highlightSingleSnippet(
   }
 }
 
-function getHighlightStyle(type?: string, _severity?: 'low' | 'medium' | 'high'): string {
+function getHighlightStyle(type?: string, _severity?: 'low' | 'medium' | 'high', isQuote?: boolean): string {
   const baseStyle = 'cursor: pointer; transition: all 0.2s ease;';
 
   const t = (type || '').toLowerCase();
 
+  // If it's quoted content or type includes "quoted", use blue color scheme
+  if (isQuote || t.includes('quoted')) {
+    if (t.includes('misinformation') || t.includes('disinformation')) {
+      return baseStyle + 'background-color: rgba(59, 130, 246, 0.25); border-bottom: 2px solid rgb(59, 130, 246);';
+    } else if (t.includes('propaganda')) {
+      return baseStyle + 'background-color: rgba(14, 165, 233, 0.25); border-bottom: 2px solid rgb(14, 165, 233);';
+    } else if (t.includes('fallacy')) {
+      return baseStyle + 'background-color: rgba(6, 182, 212, 0.25); border-bottom: 2px solid rgb(6, 182, 212);';
+    }
+    // Default quoted highlight
+    return baseStyle + 'background-color: rgba(37, 99, 235, 0.25); border-bottom: 2px solid rgb(37, 99, 235);';
+  }
+
+  // Regular (non-quoted) content colors
   if (t.includes('misinformation')) {
     return baseStyle + 'background-color: rgba(239, 68, 68, 0.25); border-bottom: 2px solid rgb(239, 68, 68);';
   } else if (t.includes('disinformation')) {
