@@ -59,6 +59,9 @@ function getPageTitle(): string {
 
 // Highlighting functions
 function clearHighlights() {
+  // Remove all tooltips
+  document.querySelectorAll('.veritas-tooltip').forEach(tooltip => tooltip.remove());
+
   currentHighlights.forEach(({ element }) => {
     const parent = element.parentNode;
     if (parent) {
@@ -149,6 +152,13 @@ function highlightSnippets(snippets: FlaggedSnippet[]) {
   processNextSnippet();
 }
 
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, ' ')  // Normalize whitespace
+    .trim();
+}
+
 function highlightSingleSnippet(
   snippet: FlaggedSnippet,
   idx: number,
@@ -158,7 +168,28 @@ function highlightSingleSnippet(
 ) {
   if (!articleRoot) return;
 
-  // Create a fresh TreeWalker for this snippet
+  // Normalize the search text for better matching
+  const normalizedSearch = normalizeText(textToFind);
+
+  // Escape special regex characters and create flexible whitespace pattern
+  const escapedSearch = normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const flexiblePattern = escapedSearch.replace(/ /g, '\\s+');
+  const regex = new RegExp(flexiblePattern, 'gi');
+
+  let foundCount = 0;
+
+  // Build a map of text content with node positions
+  interface TextNodeInfo {
+    node: Text;
+    start: number;
+    end: number;
+    text: string;
+  }
+
+  const textNodes: TextNodeInfo[] = [];
+  let concatenatedText = '';
+
+  // Collect all text nodes and build concatenated text
   const walker = document.createTreeWalker(
     articleRoot,
     NodeFilter.SHOW_TEXT,
@@ -166,43 +197,146 @@ function highlightSingleSnippet(
   );
 
   let node;
-  let foundCount = 0;
+  while ((node = walker.nextNode())) {
+    const textContent = (node as Text).textContent || '';
+    if (textContent.trim().length > 0) {
+      const start = concatenatedText.length;
+      concatenatedText += textContent;
+      const end = concatenatedText.length;
 
-  while ((node = walker.nextNode()) && foundCount < maxHighlights) {
-    const textContent = node.textContent || '';
+      textNodes.push({
+        node: node as Text,
+        start,
+        end,
+        text: textContent
+      });
+    }
+  }
 
-    // Find all occurrences in this text node
-    let startIndex = 0;
-    let matchIndex = -1;
+  // Search for matches in the concatenated text
+  let match;
+  const matches: { start: number; end: number }[] = [];
 
-    while ((matchIndex = textContent.indexOf(textToFind, startIndex)) !== -1) {
-      if (foundCount >= maxHighlights) {
-        console.warn(`[Veritas] Reached max highlights (${maxHighlights}) for snippet ${idx}`);
-        break;
+  while ((match = regex.exec(concatenatedText)) !== null && matches.length < maxHighlights) {
+    matches.push({
+      start: match.index,
+      end: match.index + match[0].length
+    });
+  }
+
+  console.log(`[Veritas] Found ${matches.length} potential matches for snippet ${idx}`);
+
+  // Process each match
+  for (const match of matches) {
+    if (foundCount >= maxHighlights) break;
+
+    try {
+      // Find which text nodes this match spans
+      const affectedNodes: Array<{ node: Text; startOffset: number; endOffset: number }> = [];
+
+      for (const nodeInfo of textNodes) {
+        // Check if this node contains any part of the match
+        if (match.start < nodeInfo.end && match.end > nodeInfo.start) {
+          const startOffset = Math.max(0, match.start - nodeInfo.start);
+          const endOffset = Math.min(nodeInfo.text.length, match.end - nodeInfo.start);
+
+          affectedNodes.push({
+            node: nodeInfo.node,
+            startOffset,
+            endOffset
+          });
+        }
       }
 
-      try {
-        const range = document.createRange();
-        range.setStart(node, matchIndex);
-        range.setEnd(node, matchIndex + textToFind.length);
+      if (affectedNodes.length === 0) continue;
 
-        const highlight = document.createElement('mark');
-        highlight.setAttribute('data-veritas-snippet-id', `${snippetId}-${foundCount}`);
-        highlight.setAttribute('data-snippet-index', String(idx));
-        highlight.className = 'veritas-highlight';
-        highlight.style.cssText = getHighlightStyle(snippet.type, snippet.severity);
-        highlight.title = `${snippet.type || 'Flagged'}: Click for details`;
+      // Create highlights for each affected node (in reverse to preserve positions)
+      const highlightElements: HTMLElement[] = [];
 
-        // Wrap the range with the highlight
-        range.surroundContents(highlight);
+      for (let i = affectedNodes.length - 1; i >= 0; i--) {
+        const { node, startOffset, endOffset } = affectedNodes[i];
 
-        // Add click handler
+        try {
+          const range = document.createRange();
+          range.setStart(node, startOffset);
+          range.setEnd(node, endOffset);
+
+          const highlight = document.createElement('mark');
+          highlight.setAttribute('data-veritas-snippet-id', `${snippetId}-${foundCount}`);
+          highlight.setAttribute('data-snippet-index', String(idx));
+          highlight.className = 'veritas-highlight';
+          highlight.style.cssText = getHighlightStyle(snippet.type, snippet.severity);
+          highlight.title = `${snippet.type || 'Flagged'}: Click to expand`;
+
+          // Wrap the range with the highlight
+          range.surroundContents(highlight);
+          highlightElements.unshift(highlight); // Add to start to maintain order
+        } catch (error) {
+          console.error(`[Veritas] Failed to wrap range for snippet ${idx}:`, error);
+          // Continue with other nodes even if one fails
+        }
+      }
+
+      // Add click handlers to all highlight elements for this match
+      highlightElements.forEach(highlight => {
         highlight.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
 
-          // Flash the highlight
-          highlight.style.animation = 'veritas-pulse 0.5s ease-in-out';
+          // Toggle expansion
+          const isExpanded = highlight.classList.contains('veritas-expanded');
+
+          // Remove expansion from all highlights
+          document.querySelectorAll('.veritas-highlight.veritas-expanded').forEach(h => {
+            h.classList.remove('veritas-expanded');
+          });
+
+          // Remove all tooltips
+          document.querySelectorAll('.veritas-tooltip').forEach(t => t.remove());
+
+          if (!isExpanded) {
+            // Expand all parts of this highlight
+            highlightElements.forEach(el => el.classList.add('veritas-expanded'));
+
+            // Create tooltip with full context
+            const tooltip = document.createElement('div');
+            tooltip.className = 'veritas-tooltip';
+            tooltip.innerHTML = `
+              <div class="veritas-tooltip-header">
+                <strong>${snippet.type || 'Flagged Content'}</strong>
+                <button class="veritas-tooltip-close" aria-label="Close">&times;</button>
+              </div>
+              <div class="veritas-tooltip-body">
+                <p class="veritas-tooltip-reason">${snippet.reason}</p>
+                ${snippet.severity ? `<span class="veritas-tooltip-severity veritas-severity-${snippet.severity}">${snippet.severity.toUpperCase()}</span>` : ''}
+              </div>
+            `;
+
+            // Position tooltip near the first highlight element
+            const rect = highlightElements[0].getBoundingClientRect();
+            tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
+            tooltip.style.left = `${rect.left + window.scrollX}px`;
+
+            document.body.appendChild(tooltip);
+
+            // Close button handler
+            tooltip.querySelector('.veritas-tooltip-close')?.addEventListener('click', () => {
+              tooltip.remove();
+              highlightElements.forEach(el => el.classList.remove('veritas-expanded'));
+            });
+
+            // Auto-close when clicking outside
+            setTimeout(() => {
+              const closeOnClickOutside = (event: MouseEvent) => {
+                if (!tooltip.contains(event.target as Node) && !highlightElements.some(el => el === event.target)) {
+                  tooltip.remove();
+                  highlightElements.forEach(el => el.classList.remove('veritas-expanded'));
+                  document.removeEventListener('click', closeOnClickOutside);
+                }
+              };
+              document.addEventListener('click', closeOnClickOutside);
+            }, 100);
+          }
 
           // Send message to extension to show this snippet
           chrome.runtime.sendMessage({
@@ -212,17 +346,11 @@ function highlightSingleSnippet(
         });
 
         currentHighlights.push({ element: highlight, snippetId: `${snippetId}-${foundCount}` });
-        foundCount++;
+      });
 
-        // Move past this occurrence
-        startIndex = matchIndex + textToFind.length;
-
-        // Re-create the walker since we modified the DOM
-        break;
-      } catch (error) {
-        console.error(`[Veritas] Failed to highlight snippet ${idx}:`, error);
-        startIndex = matchIndex + 1;
-      }
+      foundCount++;
+    } catch (error) {
+      console.error(`[Veritas] Failed to highlight snippet ${idx}:`, error);
     }
   }
 
@@ -257,9 +385,127 @@ function injectHighlightStyles() {
   const style = document.createElement('style');
   style.id = 'veritas-highlight-styles';
   style.textContent = `
+    /* Base highlight styles */
+    .veritas-highlight {
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    /* Hover effect - make lighter and show only underline */
     .veritas-highlight:hover {
-      filter: brightness(1.2);
-      transform: scale(1.02);
+      background-color: transparent !important;
+      border-bottom-width: 3px !important;
+      filter: brightness(1.3);
+    }
+
+    /* Expanded state */
+    .veritas-highlight.veritas-expanded {
+      background-color: rgba(255, 255, 255, 0.15) !important;
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+      border-radius: 3px;
+    }
+
+    /* Tooltip styles */
+    .veritas-tooltip {
+      position: absolute;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      z-index: 10000;
+      max-width: 350px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      animation: veritas-tooltip-appear 0.2s ease-out;
+    }
+
+    .veritas-tooltip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 8px 8px 0 0;
+    }
+
+    .veritas-tooltip-header strong {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .veritas-tooltip-close {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .veritas-tooltip-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+    }
+
+    .veritas-tooltip-body {
+      padding: 12px 16px;
+    }
+
+    .veritas-tooltip-reason {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0 0 8px 0;
+    }
+
+    .veritas-tooltip-severity {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .veritas-severity-low {
+      background: rgba(251, 191, 36, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .veritas-severity-medium {
+      background: rgba(249, 115, 22, 0.2);
+      color: #f97316;
+      border: 1px solid rgba(249, 115, 22, 0.3);
+    }
+
+    .veritas-severity-high {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    @keyframes veritas-tooltip-appear {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     @keyframes veritas-pulse {
@@ -271,6 +517,14 @@ function injectHighlightStyles() {
 }
 
 function scrollToSnippet(snippetIndex: number) {
+  // Remove any existing tooltips
+  document.querySelectorAll('.veritas-tooltip').forEach(tooltip => tooltip.remove());
+
+  // Remove expanded state from all highlights
+  document.querySelectorAll('.veritas-highlight.veritas-expanded').forEach(h => {
+    h.classList.remove('veritas-expanded');
+  });
+
   // Find all highlights for this snippet (there may be multiple occurrences)
   const highlights = currentHighlights.filter(h =>
     h.snippetId.startsWith(`veritas-highlight-${snippetIndex}`)
