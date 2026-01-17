@@ -122,12 +122,13 @@ class GeminiExplainer:
         try:
             print(f"DEBUG: Sending request to Gemini ({self.model_name}) with Google Search grounding...")
 
-            # Enable Google Search grounding via tools parameter in generate_content
-            tools = [{"google_search_retrieval": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}}}]
+            # Enable Google Search grounding using the correct tool name
+            from google.generativeai.types import Tool
+            google_search_tool = Tool(google_search={})
 
             response = self.model.generate_content(
                 prompt,
-                tools=tools
+                tools=[google_search_tool]
             )
             print("DEBUG: Received response from Gemini")
             
