@@ -44,11 +44,10 @@ function createPrismaClient() {
   }
 
   // Configure connection pool for serverless environment with PgBouncer
-  // Using pooled connection (port 25061) with reasonable timeouts
-  const connectionTimeout = parseInt(process.env.DATABASE_CONNECTION_TIMEOUT || '10000', 10);
-  const queryTimeout = parseInt(process.env.DATABASE_QUERY_TIMEOUT || '10000', 10);
+  // Using pooled connection (port 25061) with optimized timeouts
+  const connectionTimeout = parseInt(process.env.DATABASE_CONNECTION_TIMEOUT || '5000', 10);
 
-  console.log(`[Prisma] Connection timeout: ${connectionTimeout}ms, Query timeout: ${queryTimeout}ms`);
+  console.log(`[Prisma] Connection timeout: ${connectionTimeout}ms`);
 
   const pool = new Pool({
     connectionString,
@@ -56,8 +55,8 @@ function createPrismaClient() {
     // Serverless-optimized settings for PgBouncer (transaction mode)
     max: 1, // Single connection per serverless function
     min: 0, // Don't maintain idle connections
-    idleTimeoutMillis: 10000, // Close idle connections quickly
-    connectionTimeoutMillis: connectionTimeout, // Reasonable timeout with pooled connection
+    idleTimeoutMillis: 5000, // Close idle connections after 5s
+    connectionTimeoutMillis: connectionTimeout, // 5s default - fast with pooled connections
     allowExitOnIdle: true, // Allow the pool to exit when idle
     // Note: statement_timeout and query_timeout are NOT supported by PgBouncer in transaction mode
     // Keep-alive to prevent connection drops
