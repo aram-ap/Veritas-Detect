@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  ml-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ml-core
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot-reload in development
+      - ./src:/app/src
+      # Mount models directory to persist trained models
+      - ./models:/app/models
+      # Mount data directory for training
+      - ./data:/app/data
+      # Mount logs directory
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ml-network
+
+  # Optional: Add a simple nginx reverse proxy
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: ml-core-nginx
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - ml-core
+  #   networks:
+  #     - ml-network
+
+networks:
+  ml-network:
+    driver: bridge
+
+volumes:
+  models:
+  data:
+  logs:

@@ -1,0 +1,17 @@
+{
+  "name": "Veritas: Misinformation Platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:ext": "npm run dev --workspace=apps/extension",
+    "build": "npm run build --workspaces"
+  },
+  "devDependencies": {
+    "turbo": "latest"
+  }
+}

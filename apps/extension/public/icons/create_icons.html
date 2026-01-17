@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c16" width="16" height="16"></canvas>
+<canvas id="c48" width="48" height="48"></canvas>
+<canvas id="c128" width="128" height="128"></canvas>
+<script>
+['16','48','128'].forEach(size => {
+  const canvas = document.getElementById('c'+size);
+  const ctx = canvas.getContext('2d');
+  const s = parseInt(size);
+  // Draw gradient background
+  const gradient = ctx.createLinearGradient(0, 0, s, s);
+  gradient.addColorStop(0, '#6366f1');
+  gradient.addColorStop(1, '#a855f7');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, s, s);
+  // Draw checkmark
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = s/8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(s*0.25, s*0.5);
+  ctx.lineTo(s*0.4, s*0.65);
+  ctx.lineTo(s*0.75, s*0.35);
+  ctx.stroke();
+  // Download
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'icon'+size+'.png';
+    a.click();
+  });
+});
+</script>
+</body>
+</html>
