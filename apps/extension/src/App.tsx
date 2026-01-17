@@ -1,11 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TrustDial } from './components/TrustDial';
+import { FlaggedContent, type FlaggedSnippet } from './components/FlaggedContent';
 import './index.css';
 
 interface AnalysisResult {
   score: number;
   bias: string;
-  flagged_indices: number[][];
+  flagged_snippets: FlaggedSnippet[];
+  summary?: string;
+  metadata?: {
+    model?: string;
+    source?: string;
+  };
 }
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
@@ -134,7 +140,7 @@ function App() {
     setResult(null);
   };
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (forceRefresh = true) => {
     setAnalyzing(true);
     setError(null);
     setResult(null);
@@ -165,6 +171,8 @@ function App() {
         throw new Error('Could not extract page content');
       }
 
+      console.log('[Veritas] Sending text to API:', response.text.substring(0, 100) + '...');
+
       // Send analyze request with credentials (browser automatically includes httpOnly cookies)
       const analyzeRes = await fetch('http://localhost:3000/api/analyze', {
         method: 'POST',
@@ -175,7 +183,8 @@ function App() {
         body: JSON.stringify({
           text: response.text,
           title: response.title,
-          url: tab.url
+          url: tab.url,
+          forceRefresh
         }),
       });
 
@@ -187,7 +196,13 @@ function App() {
       }
 
       const data = await analyzeRes.json();
+      console.log('[Veritas] API Response:', data); // Debug log
       setResult(data);
+      
+      // Cache the result locally for this URL
+      if (tab.url) {
+        chrome.storage.local.set({ [tab.url]: data });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
       if (err instanceof Error && err.message.includes('sign in')) {
@@ -198,8 +213,20 @@ function App() {
     }
   };
 
+  // Check for cached results when URL changes
+  useEffect(() => {
+    if (currentUrl) {
+      chrome.storage.local.get(currentUrl, (items) => {
+        if (items[currentUrl]) {
+          console.log('[Veritas] Found cached result for', currentUrl);
+          setResult(items[currentUrl] as AnalysisResult);
+        }
+      });
+    }
+  }, [currentUrl]);
+
   const getBiasStyle = (bias: string) => {
-    const lowerBias = bias.toLowerCase();
+    const lowerBias = (bias || '').toLowerCase();
     if (lowerBias.includes('left')) {
       return { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' };
     } else if (lowerBias.includes('right')) {
@@ -304,7 +331,7 @@ function App() {
         {!result && !analyzing && (
           <div className="flex-1 flex flex-col items-center justify-center">
             <button
-              onClick={handleAnalyze}
+              onClick={() => handleAnalyze(true)}
               disabled={analyzing}
               className="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -338,7 +365,7 @@ function App() {
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-4">
             <p className="text-red-400 text-sm">{error}</p>
             <button
-              onClick={handleAnalyze}
+              onClick={() => handleAnalyze(true)}
               className="mt-3 text-sm text-red-400 hover:text-red-300 underline"
             >
               Try again
@@ -363,12 +390,22 @@ function App() {
               </div>
             </div>
 
+            {/* Flagged Content */}
+            <FlaggedContent snippets={result.flagged_snippets} />
+
             {/* Info about score */}
             <div className="mt-6 w-full bg-slate-800/30 rounded-xl p-4 border border-slate-700/50">
               <p className="text-xs text-gray-400 leading-relaxed">
                 <span className="font-medium text-gray-300">Score Interpretation:</span> A score of 100 indicates the content is highly trustworthy, while 0 indicates high likelihood of misinformation.
               </p>
             </div>
+
+            {/* Debug Info: Model Source */}
+            {result.metadata && (result.metadata.model || result.metadata.source) && (
+               <div className="mt-2 text-[10px] text-gray-600 font-mono text-center w-full">
+                 Analysis by: {result.metadata.model || result.metadata.source || 'Unknown'}
+               </div>
+            )}
 
             {/* New analysis button */}
             <button

@@ -11,14 +11,18 @@ import re
 import joblib
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from functools import lru_cache
+import logging
 
 # Add src to path for imports
 sys.path.append(os.path.dirname(__file__))
 from preprocessing import prepare_for_model
 from gemini_explainer import GeminiExplainer
+from cache import get_cache
+from bias_data import get_bias_from_url
 
+logger = logging.getLogger(__name__)
 
 class MisinfoPredictor:
     """Handles model inference and prediction for misinformation detection."""
@@ -33,7 +37,10 @@ class MisinfoPredictor:
         self.model_path = Path(model_path)
         self.vectorizer = None
         self.classifier = None
-        self.load_model()
+        try:
+            self.load_model()
+        except Exception as e:
+            logger.warning(f"Could not load ML model: {e}. Running in Gemini-only mode.")
         
     def load_model(self):
         """Load the trained model and vectorizer from disk."""
@@ -62,6 +69,14 @@ class MisinfoPredictor:
         Returns:
             Dictionary containing trust_score, label, and probabilities
         """
+        if not self.classifier or not self.vectorizer:
+            return {
+                'trust_score': 50,
+                'label': "Unknown",
+                'confidence': 0.0,
+                'prediction': 0
+            }
+
         # Preprocess text
         processed_text = prepare_for_model(text, title)
         
@@ -125,6 +140,9 @@ class MisinfoPredictor:
         Returns:
             List of dictionaries containing flagged snippets with indices and reasons
         """
+        if not self.classifier or not self.vectorizer:
+            return []
+
         processed_text = prepare_for_model(text, title)
         tfidf_features = self.vectorizer.transform([processed_text])
         
@@ -203,13 +221,6 @@ class MisinfoPredictor:
     def _determine_snippet_reason(self, feature: str, score: float) -> str:
         """
         Determine the reason why a snippet is flagged.
-        
-        Args:
-            feature: The feature (word/ngram) that triggered the flag
-            score: The importance score
-            
-        Returns:
-            Human-readable reason string
         """
         # Sensationalist words
         sensationalist = ['shocking', 'amazing', 'unbelievable', 'incredible', 'miracle', 
@@ -237,7 +248,7 @@ class MisinfoPredictor:
 
 
 class BiasDetector:
-    """Detects political bias in text using keyword analysis."""
+    """Detects political bias in text using keyword analysis. (Legacy/Fallback)"""
     
     def __init__(self):
         """Initialize bias detector with keyword dictionaries."""
@@ -264,12 +275,6 @@ class BiasDetector:
     def detect_bias(self, text: str) -> str:
         """
         Detect political bias in text.
-        
-        Args:
-            text: Text to analyze
-            
-        Returns:
-            Bias classification: "Left", "Left-Center", "Center", "Right-Center", "Right"
         """
         text_lower = text.lower()
         
@@ -324,7 +329,8 @@ def get_gemini_explainer() -> GeminiExplainer:
 def predict_full_analysis(
     text: str, 
     title: Optional[str] = None,
-    deep_dive: bool = False
+    url: Optional[str] = None,
+    force_refresh: bool = False
 ) -> Dict:
     """
     Perform complete analysis: misinformation detection, bias detection, and highlighting.
@@ -332,64 +338,102 @@ def predict_full_analysis(
     Args:
         text: Article text
         title: Optional article title
-        deep_dive: Whether to perform deep fact-checking with Gemini (now always enabled)
+        url: Optional article URL (for database lookup)
+        force_refresh: Whether to ignore cache and force new analysis
         
     Returns:
         Complete analysis dictionary ready for API response
     """
+    cache = get_cache()
+    
+    # Check cache first
+    if not force_refresh:
+        cached_result = cache.get(url or title or "", text)
+        if cached_result:
+            logger.info("Returning cached analysis")
+            return cached_result
+
     # Initialize predictors (cached to avoid reloading the model each call)
     misinfo_predictor = get_misinfo_predictor()
     bias_detector = get_bias_detector()
     gemini_explainer = get_gemini_explainer()
     
+    # 0. Determine Bias (Database -> Gemini -> Legacy)
+    db_bias = get_bias_from_url(url)
+    
+    # 1. Try Gemini Analysis (Primary)
+    gemini_result = gemini_explainer.analyze_content(text, title)
+    
+    if gemini_result["trust_score"] != 50 or gemini_result["label"] != "Unknown":
+        # Gemini succeeded
+        final_bias = db_bias if db_bias else gemini_result['bias']
+        
+        result = {
+            'trust_score': gemini_result['trust_score'],
+            'label': gemini_result['label'],
+            'bias': final_bias,
+            'explanation': {
+                'summary': gemini_result.get('summary', 'Analysis by Gemini'),
+                'generated_by': 'gemini'
+            },
+            'flagged_snippets': gemini_result.get('flagged_snippets', []),
+            'fact_checked_claims': gemini_result.get('fact_checks', []),
+            'metadata': {
+                'model': 'gemini-3-flash-preview',
+                'source': 'ai_generated',
+                'bias_source': 'database' if db_bias else 'ai_generated'
+            }
+        }
+        
+        # Save to cache
+        cache.set(url or title or "", text, result)
+        return result
+
+    # 2. Fallback to Legacy ML Model if Gemini fails
+    logger.info("Gemini analysis unavailable, falling back to ML model")
+    
     # Get misinformation prediction
     misinfo_result = misinfo_predictor.predict_misinformation(text, title)
     
-    # Get bias detection
-    bias = bias_detector.detect_bias(text)
+    # Get bias detection (fallback)
+    legacy_bias = bias_detector.detect_bias(text)
+    final_bias = db_bias if db_bias else legacy_bias
     
-    # Use Gemini for sentence-level flagging (always enabled now)
-    flagged_snippets = gemini_explainer.flag_suspicious_sentences(text, title, top_n=5)
+    # Get snippets (filtering out short garbage)
+    snippets = misinfo_predictor.get_suspicious_snippets(text, title, top_n=5)
+    flagged_snippets = []
+    for snippet in snippets:
+        # Filter out very short or single-word snippets that look like noise (e.g. "max")
+        if len(snippet['text']) < 10 or len(snippet['text'].split()) < 3:
+            continue
+            
+        flagged_snippets.append({
+            'text': snippet['text'],
+            'index': [snippet['start'], snippet['end']],
+            'type': 'MISINFORMATION', 
+            'reason': snippet['reason'],
+            'confidence': snippet['confidence'],
+            'severity': 'medium' # Default severity for ML
+        })
     
-    # If Gemini flagging fails or returns nothing, fall back to ML model flagging
-    if not flagged_snippets:
-        snippets = misinfo_predictor.get_suspicious_snippets(text, title, top_n=5)
-        flagged_snippets = []
-        for snippet in snippets:
-            # Map old format to new format with type
-            flagged_snippets.append({
-                'text': snippet['text'],
-                'index': [snippet['start'], snippet['end']],
-                'type': 'MISINFORMATION',  # Default type for ML-flagged items
-                'reason': snippet['reason'],
-                'confidence': snippet['confidence']
-            })
-    
-    # Generate explanation using Gemini (always enabled)
-    explanation = gemini_explainer.generate_explanation(
-        text=text,
-        title=title,
-        trust_score=misinfo_result['trust_score'],
-        label=misinfo_result['label'],
-        bias=bias,
-        flagged_snippets=flagged_snippets
-    )
-    
-    # Always perform fact-checking with Gemini (merged deep_dive into default behavior)
-    fact_checked_claims = gemini_explainer.fact_check_claims(text, title, top_n=3)
-    
-    # Combine results
     result = {
         'trust_score': misinfo_result['trust_score'],
         'label': misinfo_result['label'],
-        'bias': bias,
-        'explanation': explanation,
+        'bias': final_bias,
+        'explanation': {
+            'summary': f"This content was flagged as {misinfo_result['label']} based on linguistic patterns commonly found in misinformation.",
+            'generated_by': 'rule-based'
+        },
         'flagged_snippets': flagged_snippets,
-        'fact_checked_claims': fact_checked_claims if fact_checked_claims else None,
+        'fact_checked_claims': None,
         'metadata': {
             'model_confidence': misinfo_result['confidence'],
-            'prediction': misinfo_result['prediction']
+            'prediction': misinfo_result['prediction'],
+            'bias_source': 'database' if db_bias else 'rule_based'
         }
     }
+    
+    # Save to cache even for fallback? Yes.
+    cache.set(url or title or "", text, result)
     
     return result

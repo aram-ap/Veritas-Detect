@@ -5,6 +5,7 @@ interface AnalyzeRequest {
   text: string;
   title?: string;
   url?: string;
+  forceRefresh?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
 
     const backendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
 
+    console.log(`[Next.js] Calling Python backend at ${backendUrl}/predict`);
+    
     const response = await fetch(`${backendUrl}/predict`, {
       method: 'POST',
       headers: {
@@ -34,7 +37,8 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         text: body.text,
         title: body.title || '',
-        url: body.url || ''
+        url: body.url || '',
+        force_refresh: body.forceRefresh || false
       }),
     });
 
@@ -47,12 +51,15 @@ export async function POST(req: Request) {
     }
 
     const data = await response.json();
+    console.log('[Next.js] Python response data:', JSON.stringify(data).substring(0, 200) + '...');
 
     // Return the analysis results
     return NextResponse.json({
       score: data.score ?? data.trust_score ?? 50,
       bias: data.bias || 'unknown',
-      flagged_indices: data.flagged_indices || data.flagged_snippets || []
+      flagged_snippets: data.flagged_snippets || [],
+      summary: data.explanation?.summary || data.summary || undefined,
+      metadata: data.metadata || undefined
     });
   } catch (error) {
     console.error('Analyze error:', error);

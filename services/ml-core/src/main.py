@@ -15,9 +15,23 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+from pathlib import Path
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Add src to path for imports
 sys.path.append(os.path.dirname(__file__))
+
+# Debug logging for API Key
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    masked_key = f"{api_key[:5]}...{api_key[-5:]}" if len(api_key) > 10 else "***"
+    print(f"DEBUG: Found GEMINI_API_KEY: {masked_key}")
+else:
+    print("DEBUG: GEMINI_API_KEY not found in environment")
 from inference import predict_full_analysis
 
 # Configure logging
@@ -64,6 +78,15 @@ class PredictRequest(BaseModel):
         None,
         description="Article title (optional)",
         max_length=500
+    )
+    url: Optional[str] = Field(
+        None,
+        description="Article URL (optional, for bias database)",
+        max_length=2000
+    )
+    force_refresh: bool = Field(
+        False,
+        description="Whether to force a new analysis (ignoring cache)"
     )
     
     class Config:
@@ -258,13 +281,19 @@ async def predict(request: PredictRequest):
             f"Processing prediction request for text of length {len(request.text)} "
             f"(Gemini-powered analysis enabled)"
         )
+        print(f"DEBUG: Analyzed Text Preview: {request.text[:100]}...")
         
         # Run full analysis (Gemini now always enabled)
         result = predict_full_analysis(
             text=request.text,
-            title=request.title
+            title=request.title,
+            url=request.url,
+            force_refresh=request.force_refresh
         )
         
+        print(f"DEBUG: Analysis Result Metadata: {result.get('metadata')}")
+        print(f"DEBUG: Flagged Snippets Count: {len(result.get('flagged_snippets', []))}")
+
         logger.info(
             f"Prediction complete: trust_score={result['trust_score']}, "
             f"label={result['label']}, bias={result['bias']}"
@@ -310,7 +339,7 @@ async def batch_predict(texts: List[str]):
     try:
         results = []
         for text in texts:
-            result = predict_full_analysis(text, deep_dive=False)  # Batch uses basic mode
+            result = predict_full_analysis(text)  # Batch uses basic mode
             results.append(result)
 
         return {"predictions": results, "count": len(results)}
@@ -362,6 +391,7 @@ if __name__ == "__main__":
     import uvicorn
     
     # Run the service
+    print("STARTING SERVER ON PORT 8000...")
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
