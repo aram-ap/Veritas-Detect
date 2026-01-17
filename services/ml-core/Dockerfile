@@ -85,8 +85,8 @@ COPY --chown=appuser:appuser ./requirements.txt .
 #   - Comment out COPY line below
 #   - Mount model as volume: -v $(pwd)/models:/app/models
 #
-# Uncomment this line only if using Git LFS:
-# COPY --chown=appuser:appuser ./models/misinfo_model.pkl ./models/misinfo_model.pkl
+# Using Git LFS - model will be pulled during build:
+COPY --chown=appuser:appuser ./models/misinfo_model.pkl ./models/misinfo_model.pkl
 
 # Switch to non-root user
 USER appuser
