@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { TrustDial } from './components/TrustDial';
 import { FlaggedContent, type FlaggedSnippet } from './components/FlaggedContent';
-import { API_ENDPOINTS, COOKIE_CONFIG } from './config';
+import { API_ENDPOINTS, COOKIE_CONFIG, API_BASE_URL } from './config';
 import './index.css';
 
 interface AnalysisResult {
@@ -486,14 +486,17 @@ function App() {
     <div className="w-full h-full bg-gradient-to-b from-slate-900 to-slate-950 p-5 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
+        <button
+          onClick={() => chrome.tabs.create({ url: API_BASE_URL })}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+        >
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
           </div>
           <span className="text-white font-semibold">Veritas</span>
-        </div>
+        </button>
         <button
           onClick={handleLogout}
           className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-slate-800"
@@ -543,13 +546,13 @@ function App() {
         )}
 
         {analyzing && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 animate-fade-in">
             <div className="relative">
               <div className="w-20 h-20 border-4 border-indigo-500/20 rounded-full" />
               <div className="absolute inset-0 w-20 h-20 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
             </div>
             <div className="text-center">
-              <p className="text-white font-medium">Analyzing Content</p>
+              <p className="text-white font-medium animate-pulse">Analyzing Content</p>
               <p className="text-sm text-gray-400 mt-1">Checking for misinformation...</p>
             </div>
           </div>
@@ -568,7 +571,7 @@ function App() {
         )}
 
         {result && (
-          <div className="flex-1 flex flex-col items-center">
+          <div className="flex-1 flex flex-col items-center animate-fade-in">
             {/* Trust Dial */}
             <TrustDial score={result.score} size={160} />
 

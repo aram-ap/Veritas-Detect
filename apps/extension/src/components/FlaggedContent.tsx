@@ -27,6 +27,8 @@ interface FlaggedContentProps {
 }
 
 export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex, onSnippetSelect }: FlaggedContentProps) => {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
   if (!snippets || snippets.length === 0) {
     return (
         <div className="mt-6 w-full">
@@ -64,6 +66,10 @@ export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex, on
     }
   };
 
+  const handleExpandToggle = (index: number) => {
+    setExpandedIndex(expandedIndex === index ? null : index);
+  };
+
   return (
     <div className="mt-6 w-full">
       <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Flagged Content</p>
@@ -80,6 +86,8 @@ export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex, on
               }
             }}
             isSelected={selectedSnippetIndex === idx}
+            expanded={expandedIndex === idx}
+            onExpandToggle={handleExpandToggle}
           />
         ))}
       </div>
@@ -92,11 +100,12 @@ interface SnippetItemProps {
   index: number;
   onSnippetClick: (index: number) => void;
   isSelected?: boolean;
+  expanded?: boolean;
+  onExpandToggle?: (index: number) => void;
 }
 
 const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
-  ({ snippet, index, onSnippetClick, isSelected }, ref) => {
-    const [expanded, setExpanded] = useState(false);
+  ({ snippet, index, onSnippetClick, isSelected, expanded = false, onExpandToggle }, ref) => {
 
     const getColors = (type: string = '', isQuote: boolean = false) => {
       const t = type.toLowerCase();
@@ -168,7 +177,9 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
           className="expand-button flex-shrink-0"
           onClick={(e) => {
             e.stopPropagation();
-            setExpanded(!expanded);
+            if (onExpandToggle) {
+              onExpandToggle(index);
+            }
           }}
           aria-label={expanded ? "Collapse" : "Expand"}
         >
