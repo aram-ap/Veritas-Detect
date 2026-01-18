@@ -242,7 +242,7 @@ class ClaimValidator:
                         # Also try a general verification search for more sources
                         general_results = self.web_search.search_for_verification(
                             claim,
-                            num_results=5,
+                            num_results=3,
                             recent_only=True
                         )
                         if general_results:
@@ -257,7 +257,7 @@ class ClaimValidator:
                         seen_urls.add(url)
                         unique_sources.append(source)
 
-                sources = unique_sources[:20]  # Limit to 15 sources
+                sources = unique_sources[:15]  # Limit to 15 sources
 
                 if has_verification and len(sources) > 0:
                     logger.info(f"Found {len(sources)} web sources for recent claim")

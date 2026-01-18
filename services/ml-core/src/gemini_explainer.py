@@ -149,6 +149,20 @@ class GeminiExplainer:
         - "Propaganda": Content designed to manipulate emotions/opinions rather than inform.
         - "Logical Fallacy": Flawed reasoning (ad hominem, straw man, etc.).
         - "Bias": Assess the political leaning based on tone, framing, and omission.
+        
+        FOCUS ON MISLEADING CONTENT:
+        - Pay extra attention to misleading framing, even if facts are technically accurate
+        - Flag cherry-picked statistics that omit important context
+        - Identify half-truths where key information is deliberately excluded
+        - Detect misleading headlines that don't match article content
+        - Spot correlation vs causation errors
+        - Find statements that imply false connections between unrelated events
+        - Notice when important qualifiers or exceptions are omitted
+        - Examples of misleading content:
+          * "Crime up 50%" (misleading if baseline is historically low or timeframe is selective)
+          * "Study shows X causes Y" (misleading if correlation, not causation)
+          * Presenting outlier data as representative
+          * Using percentages instead of absolute numbers to exaggerate impact
 
         CRITICAL: DISTINGUISH BETWEEN ARTICLE CONTENT AND QUOTED CONTENT:
         - Identify if flagged text is a DIRECT QUOTE from a person (indicated by quotation marks, "said X", "according to Y", etc.)
@@ -181,6 +195,10 @@ class GeminiExplainer:
         - Flag claims that contradict well-established facts (historical events, scientific consensus)
         - Flag extreme bias, loaded language, or obvious partisan framing
         - Flag sensationalism, clickbait, or misleading framing
+        - CRITICALLY: Flag misleading use of statistics, cherry-picked data, or missing context
+        - Flag statements that technically contain truth but mislead through omission
+        - Flag headlines or claims that misrepresent underlying facts
+        - Flag correlation presented as causation without proper evidence
 
         WHAT NOT TO FLAG:
         - Recent news events from 2025-2026 that you're not familiar with
