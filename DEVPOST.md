@@ -2,7 +2,7 @@
 The name Veritas comes from the Roman goddess of truth. I wanted to build an extension that tackles identifying misinformation in all shapes and forms and shows the truth. I took inspiration from Grammarly, the Grammar checking tool that many people have come to love. However, instead of grammar, my tool tackles media information. I specifically chose this thinking that it's a tool that could be highly effective for the people I care about and myself.
 
 ## What it does
-Veritas identifys misleading or false claims in media, cross referencing with reputable sources, and provides a "Trust Score", a score of how trustworthy an article. The "Trust Score" is measured uupon misinformation, logical fallacies, bias, and more to give you a strong insight of how much to trust what you're reading. The misinformation algorithm inside highlights questionable or wrong sentences, explains why its wrong or provides insight into how it can mislead the reader.
+Veritas identifys misleading or false claims in media, cross referencing with reputable sources, and provides a "Trust Score", a score of how trustworthy an article. The program highlights areas with misinformation or with concerning phrasing. The "Trust Score" is measured uupon misinformation, logical fallacies, bias, and more to give you a strong insight of how much to trust what you're reading. The misinformation algorithm inside highlights questionable or wrong sentences, explains why its wrong or provides insight into how it can mislead the reader.
 
 ## How we built it
 Veritas is built upon Next.js and Vercel for the front end, React & Vue for the Extension, and Digital Ocean's database and web service for the backend and processing the misinformation detection api.
