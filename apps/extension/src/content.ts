@@ -708,13 +708,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   } else if (request.action === 'RESTORE_HIGHLIGHTS') {
     console.log('[Veritas] Received RESTORE_HIGHLIGHTS message');
     try {
-      // Re-highlight using stored snippets
+      // Re-highlight using stored snippets in memory first
       if (lastSnippets.length > 0) {
+        console.log('[Veritas] Restoring from memory:', lastSnippets.length, 'snippets');
         highlightSnippets(lastSnippets);
         sendResponse({ success: true, restored: true });
       } else {
-        console.log('[Veritas] No snippets to restore');
-        sendResponse({ success: true, restored: false });
+        // Fall back to storage if memory is empty
+        console.log('[Veritas] No snippets in memory, checking storage...');
+        restoreHighlightsFromStorage();
+        sendResponse({ success: true, restored: true });
       }
     } catch (error) {
       console.error('[Veritas] Error restoring highlights:', error);

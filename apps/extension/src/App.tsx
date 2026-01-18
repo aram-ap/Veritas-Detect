@@ -19,6 +19,27 @@ interface AnalysisResult {
 
 type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
 
+// Helper function to check if URL is a special page that shouldn't be analyzed
+const isSpecialPage = (url: string): boolean => {
+  if (!url) return true;
+  
+  // Chrome internal pages
+  if (url.startsWith('chrome://') || 
+      url.startsWith('chrome-extension://') ||
+      url.startsWith('edge://') ||
+      url.startsWith('about:') ||
+      url.startsWith('file://')) {
+    return true;
+  }
+  
+  // Blank pages
+  if (url === 'about:blank' || url === 'chrome://newtab/' || url === 'edge://newtab/') {
+    return true;
+  }
+  
+  return false;
+};
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [userName, setUserName] = useState<string>('');
@@ -85,11 +106,10 @@ function App() {
   // Helper function to update current tab URL
   const updateCurrentTabUrl = useCallback(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.url) {
-        console.log('[Veritas] Current tab URL:', tabs[0].url);
-        setCurrentUrl(tabs[0].url);
-        // Don't clear results here - let the cache effect handle it
-      }
+      const newUrl = tabs[0]?.url || '';
+      console.log('[Veritas] Current tab URL:', newUrl);
+      setCurrentUrl(newUrl);
+      // Don't clear results here - let the cache effect handle it
     });
   }, []);
 
@@ -243,6 +263,42 @@ function App() {
     setAuthState('unauthenticated');
     setResult(null);
     setResultUrl('');
+  };
+
+  // Helper function to send highlights with retry logic
+  const sendHighlightsToTab = async (tabId: number, snippets: FlaggedSnippet[], retryCount = 0): Promise<boolean> => {
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        action: 'HIGHLIGHT_SNIPPETS',
+        snippets: snippets
+      });
+      console.log('[Veritas] Successfully sent highlights to content script');
+      return true;
+    } catch (error) {
+      console.warn('[Veritas] Failed to send highlights (attempt ' + (retryCount + 1) + '):', error);
+      
+      // If first attempt failed, try to inject content script and retry once
+      if (retryCount === 0) {
+        try {
+          console.log('[Veritas] Injecting content script and retrying...');
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['content.js']
+          });
+          
+          // Wait a bit for content script to initialize
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Retry sending highlights
+          return await sendHighlightsToTab(tabId, snippets, retryCount + 1);
+        } catch (injectError) {
+          console.error('[Veritas] Failed to inject content script:', injectError);
+          return false;
+        }
+      }
+      
+      return false;
+    }
   };
 
   const handleClearSiteData = async () => {
@@ -483,17 +539,8 @@ function App() {
 
         // Send highlights
         if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0 && tab.id) {
-          const snippetsToHighlight = analysisResult.flagged_snippets;
           setTimeout(async () => {
-            try {
-              await chrome.tabs.sendMessage(tab.id!, {
-                action: 'HIGHLIGHT_SNIPPETS',
-                snippets: snippetsToHighlight
-              });
-              console.log('[Veritas] Sent highlights to content script');
-            } catch (highlightError) {
-              console.error('[Veritas] Failed to send highlights:', highlightError);
-            }
+            await sendHighlightsToTab(tab.id!, analysisResult.flagged_snippets);
           }, 100);
         }
 
@@ -625,18 +672,9 @@ function App() {
 
       // Send highlights to content script (non-blocking, don't await)
       if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0 && tab.id) {
-        const snippetsToHighlight = analysisResult.flagged_snippets;
         // Use setTimeout to make this truly non-blocking
         setTimeout(async () => {
-          try {
-            await chrome.tabs.sendMessage(tab.id!, {
-              action: 'HIGHLIGHT_SNIPPETS',
-              snippets: snippetsToHighlight
-            });
-            console.log('[Veritas] Sent highlights to content script');
-          } catch (highlightError) {
-            console.error('[Veritas] Failed to send highlights:', highlightError);
-          }
+          await sendHighlightsToTab(tab.id!, analysisResult.flagged_snippets);
         }, 100); // Small delay to ensure UI updates first
       }
 
@@ -668,9 +706,33 @@ function App() {
 
   // Check for cached results when URL changes
   useEffect(() => {
-    if (!currentUrl) return;
+    if (!currentUrl) {
+      // No URL - clear state
+      console.log('[Veritas] No URL - clearing state');
+      setResult(null);
+      setResultUrl('');
+      setError(null);
+      return;
+    }
+
+    // Check if this is a special page (blank, chrome settings, etc.)
+    if (isSpecialPage(currentUrl)) {
+      console.log('[Veritas] Special page detected - resetting to default state:', currentUrl);
+      setResult(null);
+      setResultUrl('');
+      setError(null);
+      return;
+    }
 
     console.log('[Veritas] Checking cache for URL:', currentUrl);
+
+    // If URL changed from a different page, clear the old results first
+    if (resultUrl && resultUrl !== currentUrl) {
+      console.log('[Veritas] URL changed from', resultUrl, 'to', currentUrl, '- clearing old results');
+      setResult(null);
+      setResultUrl('');
+      setError(null);
+    }
 
     // Don't check cache if currently analyzing - let the analysis complete
     if (analyzing) {
@@ -694,40 +756,18 @@ function App() {
         // Send highlights for cached results (non-blocking)
         if (cachedResult.flagged_snippets && cachedResult.flagged_snippets.length > 0) {
           setTimeout(async () => {
-            try {
-              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-              if (tab.id) {
-                await chrome.tabs.sendMessage(tab.id, {
-                  action: 'HIGHLIGHT_SNIPPETS',
-                  snippets: cachedResult.flagged_snippets
-                });
-                console.log('[Veritas] Sent cached highlights to content script');
-              }
-            } catch (error) {
-              console.error('[Veritas] Failed to send cached highlights:', error);
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab.id) {
+              await sendHighlightsToTab(tab.id, cachedResult.flagged_snippets);
             }
           }, 200);
         }
       } else {
         console.log('[Veritas] No cached result for', currentUrl);
-
-        // If URL changed to a different page, clear the old results
-        if (resultUrl && resultUrl !== currentUrl) {
-          console.log('[Veritas] URL changed from', resultUrl, 'to', currentUrl, '- clearing old results');
-          setResult(null);
-          setResultUrl('');
-          setError(null);
-        } else if (!resultUrl) {
-          // No previous result, safe to clear
-          setResult(null);
-          setError(null);
-        } else {
-          // Result is for current URL, keep it (handles race condition during save)
-          console.log('[Veritas] Keeping result for current URL (cache write may be in progress)');
-        }
+        // State was already cleared above if needed
       }
     });
-  }, [currentUrl, resultUrl]);
+  }, [currentUrl, resultUrl, analyzing]);
 
   const getBiasStyle = (bias: string) => {
     const lowerBias = (bias || '').toLowerCase();
@@ -848,7 +888,7 @@ function App() {
       )}
 
       {/* Current page - only show when no result and not analyzing */}
-      {currentUrl && !result && !analyzing && !error && (
+      {currentUrl && !result && !analyzing && !error && !isSpecialPage(currentUrl) && (
         <div className="mb-5 px-3 py-2 bg-slate-800/50 rounded-lg">
           <p className="text-xs text-gray-500 mb-1">Analyzing page:</p>
           <p className="text-xs text-gray-300 truncate">{currentUrl}</p>
@@ -857,7 +897,19 @@ function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
-        {!result && !analyzing && (
+        {!result && !analyzing && isSpecialPage(currentUrl) && (
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="w-24 h-24 mb-6 rounded-full bg-slate-800/50 flex items-center justify-center border-4 border-slate-700/30">
+              <svg className="w-10 h-10 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-400 text-center max-w-[80%]">
+              This page cannot be analyzed. Please navigate to a web page to scan for misinformation.
+            </p>
+          </div>
+        )}
+        {!result && !analyzing && !isSpecialPage(currentUrl) && (
           <div className="flex-1 flex flex-col items-center justify-center">
             <div className="w-24 h-24 mb-6 rounded-full bg-slate-800/50 flex items-center justify-center border-4 border-slate-700/30">
               <svg className="w-10 h-10 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -940,9 +992,9 @@ function App() {
         <div className="flex-shrink-0 mt-4 p-4 border-t border-slate-700/50 bg-slate-900/50">
           <button
             onClick={() => handleAnalyze(true)}
-            disabled={usage ? !usage.isUnlimited && (usage.limit - usage.used <= 0) : false}
+            disabled={isSpecialPage(currentUrl) || (usage ? !usage.isUnlimited && (usage.limit - usage.used <= 0) : false)}
             className={`w-full py-3 px-4 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 ${
-              usage && !usage.isUnlimited && (usage.limit - usage.used <= 0)
+              isSpecialPage(currentUrl) || (usage && !usage.isUnlimited && (usage.limit - usage.used <= 0))
                 ? 'bg-slate-700 text-gray-400 cursor-not-allowed shadow-none'
                 : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-indigo-500/25 hover:shadow-indigo-500/40'
             }`}
@@ -951,9 +1003,11 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={result || error ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" : "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"} />
             </svg>
             <span>
-              {usage && !usage.isUnlimited && (usage.limit - usage.used <= 0) 
-                ? 'Daily Limit Reached' 
-                : (result || error ? 'Rescan Page' : 'Scan for Misinformation')}
+              {isSpecialPage(currentUrl)
+                ? 'Cannot Analyze This Page'
+                : usage && !usage.isUnlimited && (usage.limit - usage.used <= 0) 
+                  ? 'Daily Limit Reached' 
+                  : (result || error ? 'Rescan Page' : 'Scan for Misinformation')}
             </span>
           </button>
         </div>
