@@ -49,7 +49,7 @@ git commit -m "Fix: Switch to pooled database connection and optimize timeouts"
 git push origin main
 
 # Wait for Vercel deployment, then test
-curl https://veritas-web-web.vercel.app/api/health
+curl https://veritas-detect.vercel.app/api/health
 ```
 
 **Expected Results:**

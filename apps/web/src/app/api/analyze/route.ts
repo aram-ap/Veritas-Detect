@@ -26,6 +26,82 @@ export async function POST(req: Request) {
       );
     }
 
+    // Get or create user profile
+    let userProfile = await prisma.userProfile.findUnique({
+      where: { auth0Id: session.user.sub }
+    });
+
+    if (!userProfile) {
+      userProfile = await prisma.userProfile.create({
+        data: {
+          auth0Id: session.user.sub,
+          email: session.user.email,
+          name: session.user.name,
+        }
+      });
+    }
+
+    // Check if we need to reset daily counter
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const lastReset = new Date(userProfile.lastResetDate);
+    lastReset.setHours(0, 0, 0, 0);
+
+    if (lastReset < today) {
+      // Reset daily counter
+      userProfile = await prisma.userProfile.update({
+        where: { id: userProfile.id },
+        data: {
+          todayAnalysisCount: 0,
+          lastResetDate: new Date(),
+        }
+      });
+    }
+
+    // Special handling for unlimited user
+    const isUnlimitedUser = session.user.email?.toLowerCase() === 'yoitsaram' || 
+                            session.user.name?.toLowerCase() === 'yoitsaram' ||
+                            userProfile.email?.toLowerCase() === 'yoitsaram' ||
+                            userProfile.name?.toLowerCase() === 'yoitsaram';
+
+    // Check rate limits (unless unlimited user)
+    if (!isUnlimitedUser) {
+      // Check if beta subscription has expired
+      if (userProfile.subscriptionTier === 'beta' && userProfile.subscriptionEndsAt) {
+        if (new Date() > new Date(userProfile.subscriptionEndsAt)) {
+          // Beta expired, revert to free tier
+          userProfile = await prisma.userProfile.update({
+            where: { id: userProfile.id },
+            data: {
+              subscriptionTier: 'free',
+              dailyAnalysisLimit: 5,
+            }
+          });
+        }
+      }
+
+      if (userProfile.todayAnalysisCount >= userProfile.dailyAnalysisLimit) {
+        return NextResponse.json(
+          { 
+            error: 'Daily limit reached',
+            limit: userProfile.dailyAnalysisLimit,
+            used: userProfile.todayAnalysisCount,
+            tier: userProfile.subscriptionTier,
+            message: `You've reached your daily limit of ${userProfile.dailyAnalysisLimit} analyses. Upgrade to Pro for more!`
+          },
+          { status: 429 }
+        );
+      }
+
+      // Increment usage counter
+      userProfile = await prisma.userProfile.update({
+        where: { id: userProfile.id },
+        data: {
+          todayAnalysisCount: userProfile.todayAnalysisCount + 1,
+        }
+      });
+    }
+
     const backendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
 
     console.log(`[Next.js] Calling Python backend at ${backendUrl}/predict`);
@@ -69,21 +145,6 @@ export async function POST(req: Request) {
 
     // Track the analysis in the database
     try {
-      // Get or create user profile
-      let userProfile = await prisma.userProfile.findUnique({
-        where: { auth0Id: session.user.sub }
-      });
-
-      if (!userProfile) {
-        userProfile = await prisma.userProfile.create({
-          data: {
-            auth0Id: session.user.sub,
-            email: session.user.email,
-            name: session.user.name,
-          }
-        });
-      }
-
       // Record the analysis (upsert if URL exists to avoid duplicates)
       if (body.url) {
         // If URL is provided, update existing record or create new one

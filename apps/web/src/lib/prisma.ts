@@ -63,7 +63,7 @@ function createPrismaClient() {
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
     // Application identifier for DB logs
-    application_name: 'veritas-web',
+    application_name: 'veritas-detect',
   });
   
   // Log connection errors for debugging

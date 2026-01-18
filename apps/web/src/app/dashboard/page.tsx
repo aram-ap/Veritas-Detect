@@ -21,16 +21,27 @@ interface UserStats {
   }>;
 }
 
+interface UsageData {
+  tier: string;
+  dailyLimit: number;
+  used: number;
+  remaining: number;
+  subscriptionEndsAt: string | null;
+}
+
 export default function Dashboard() {
   const { user, isLoading } = useUser();
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [usage, setUsage] = useState<UsageData | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     if (!isLoading && user) {
       fetchStats();
+      fetchUsage();
     }
   }, [user, isLoading]);
 
@@ -47,6 +58,59 @@ export default function Dashboard() {
       console.error(err);
     } finally {
       setLoadingStats(false);
+    }
+  };
+
+  const fetchUsage = async () => {
+    try {
+      const response = await fetch('/api/usage');
+      if (!response.ok) {
+        throw new Error('Failed to fetch usage');
+      }
+      const data = await response.json();
+      setUsage(data);
+    } catch (err) {
+      console.error('Failed to load usage:', err);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    setUpgrading(true);
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        window.location.href = data.url;
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to start checkout');
+      }
+    } catch (err) {
+      alert('An error occurred. Please try again.');
+      console.error(err);
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      const response = await fetch('/api/billing-portal', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        window.location.href = data.url;
+      } else {
+        alert('Failed to open billing portal');
+      }
+    } catch (err) {
+      alert('An error occurred. Please try again.');
+      console.error(err);
     }
   };
 
@@ -141,6 +205,12 @@ export default function Dashboard() {
           </Link>
 
           <div className="flex items-center gap-4">
+            <Link
+              href="/beta"
+              className="px-4 py-2 text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors hidden sm:block"
+            >
+              Beta User
+            </Link>
             <div className="flex items-center gap-3">
               {user.picture && (
                 <img
@@ -168,6 +238,118 @@ export default function Dashboard() {
             <h1 className="text-4xl font-bold text-white mb-2">Your Dashboard</h1>
             <p className="text-gray-400">Track your article analysis history and statistics</p>
           </div>
+
+          {/* Subscription Card */}
+          {usage && (
+            <div className="bg-gradient-to-br from-indigo-500/10 to-purple-600/10 rounded-2xl p-6 border border-indigo-500/20 mb-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+                      <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white capitalize">
+                        {usage.tier === 'unlimited' ? 'Unlimited' : usage.tier === 'beta' ? 'Beta User' : usage.tier === 'pro' ? 'Pro' : 'Free'} Tier
+                      </h2>
+                      {usage.subscriptionEndsAt && (
+                        <p className="text-sm text-gray-400">
+                          Expires: {new Date(usage.subscriptionEndsAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-300">Daily Usage</span>
+                      <span className="text-sm font-medium text-white">
+                        {usage.dailyLimit === -1 ? 'Unlimited' : `${usage.used} / ${usage.dailyLimit}`}
+                      </span>
+                    </div>
+                    {usage.dailyLimit !== -1 && (
+                      <div className="w-full bg-slate-700/50 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, (usage.used / usage.dailyLimit) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {usage.dailyLimit === -1 
+                      ? 'No daily limits' 
+                      : `${usage.remaining} analyses remaining today`
+                    }
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {usage.tier === 'free' && (
+                    <>
+                      <button
+                        onClick={handleUpgrade}
+                        disabled={upgrading}
+                        className="px-6 py-3 text-white font-medium bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {upgrading ? 'Loading...' : 'Upgrade to Pro'}
+                      </button>
+                      <Link
+                        href="/beta"
+                        className="px-6 py-3 text-center text-indigo-400 font-medium border border-indigo-500/30 hover:border-indigo-500/50 hover:bg-indigo-500/5 rounded-lg transition-all whitespace-nowrap"
+                      >
+                        Beta Code
+                      </Link>
+                    </>
+                  )}
+                  {usage.tier === 'beta' && (
+                    <button
+                      onClick={handleUpgrade}
+                      disabled={upgrading}
+                      className="px-6 py-3 text-white font-medium bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {upgrading ? 'Loading...' : 'Upgrade to Pro'}
+                    </button>
+                  )}
+                  {usage.tier === 'pro' && (
+                    <button
+                      onClick={handleManageBilling}
+                      className="px-6 py-3 text-gray-300 font-medium border border-slate-600 hover:border-slate-500 hover:bg-slate-700/50 rounded-lg transition-all whitespace-nowrap"
+                    >
+                      Manage Billing
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Tier Comparison */}
+              {usage.tier === 'free' && (
+                <div className="mt-6 pt-6 border-t border-slate-700/50">
+                  <h3 className="text-sm font-medium text-gray-300 mb-3">Compare Plans</h3>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <div className="text-gray-400 mb-1">Free</div>
+                      <div className="text-white font-medium">5/day</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400 mb-1">Beta</div>
+                      <div className="text-white font-medium">20/day</div>
+                    </div>
+                    <div>
+                      <div className="text-indigo-400 mb-1">Pro</div>
+                      <div className="text-white font-medium">50/day</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Stats Cards */}
           <div className="grid md:grid-cols-3 gap-6 mb-8">
