@@ -6,22 +6,52 @@
     body {
       padding: 20px;
       font-family: system-ui, -apple-system, sans-serif;
-      background: #1e293b;
+      background: #0f172a;
       color: white;
     }
-    .container {
+    h1 {
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 30px;
+    }
+    .icon-section {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #334155;
+    }
+    .icon-section h2 {
+      margin-top: 0;
+      color: #e2e8f0;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+    .canvas-row {
       display: flex;
       gap: 20px;
       align-items: center;
       flex-wrap: wrap;
-      margin: 20px 0;
+      margin-bottom: 15px;
+    }
+    .canvas-item {
+      text-align: center;
+    }
+    .canvas-item label {
+      display: block;
+      margin-bottom: 8px;
+      color: #94a3b8;
+      font-size: 12px;
     }
     canvas {
       border: 2px solid #475569;
       border-radius: 8px;
+      background: white;
     }
     button {
-      padding: 12px 24px;
+      padding: 10px 20px;
       background: linear-gradient(to right, #6366f1, #9333ea);
       color: white;
       border: none;
@@ -30,54 +60,129 @@
       font-size: 14px;
       font-weight: 600;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      transition: all 0.2s;
     }
     button:hover {
       transform: translateY(-1px);
       box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
     }
+    button:active {
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body>
   <h1>Veritas Icon Generator</h1>
-  <p>Using the exact same shield icon from the app</p>
-  <button onclick="generateIcons()">Generate All Icons</button>
-  <div class="container">
-    <div>
-      <div>16x16</div>
-      <canvas id="c16" width="16" height="16"></canvas>
-    </div>
-    <div>
-      <div>48x48</div>
-      <canvas id="c48" width="48" height="48"></canvas>
-    </div>
-    <div>
-      <div>128x128</div>
-      <canvas id="c128" width="128" height="128"></canvas>
-    </div>
-  </div>
-  <script>
-    // SVG path from the app (shield with checkmark)
-    const shieldPath = "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z";
+  <p class="subtitle">Choose your favorite icon design for the extension</p>
 
-    function drawIconFromSVG(canvas, size) {
+  <!-- Shield Icon -->
+  <div class="icon-section">
+    <h2>🛡️ Shield with Checkmark (Current)</h2>
+    <div class="canvas-row">
+      <div class="canvas-item">
+        <label>16x16</label>
+        <canvas id="shield-16" width="16" height="16"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>48x48</label>
+        <canvas id="shield-48" width="48" height="48"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>128x128</label>
+        <canvas id="shield-128" width="128" height="128"></canvas>
+      </div>
+    </div>
+    <button onclick="downloadIcons('shield')">Download Shield Icons</button>
+  </div>
+
+  <!-- Document Search Icon -->
+  <div class="icon-section">
+    <h2>🔍 Document Search</h2>
+    <div class="canvas-row">
+      <div class="canvas-item">
+        <label>16x16</label>
+        <canvas id="docsearch-16" width="16" height="16"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>48x48</label>
+        <canvas id="docsearch-48" width="48" height="48"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>128x128</label>
+        <canvas id="docsearch-128" width="128" height="128"></canvas>
+      </div>
+    </div>
+    <button onclick="downloadIcons('docsearch')">Download Document Search Icons</button>
+  </div>
+
+  <!-- Book Open Icon -->
+  <div class="icon-section">
+    <h2>📖 Open Book</h2>
+    <div class="canvas-row">
+      <div class="canvas-item">
+        <label>16x16</label>
+        <canvas id="book-16" width="16" height="16"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>48x48</label>
+        <canvas id="book-48" width="48" height="48"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>128x128</label>
+        <canvas id="book-128" width="128" height="128"></canvas>
+      </div>
+    </div>
+    <button onclick="downloadIcons('book')">Download Open Book Icons</button>
+  </div>
+
+  <!-- Newspaper Icon -->
+  <div class="icon-section">
+    <h2>📰 Newspaper</h2>
+    <div class="canvas-row">
+      <div class="canvas-item">
+        <label>16x16</label>
+        <canvas id="newspaper-16" width="16" height="16"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>48x48</label>
+        <canvas id="newspaper-48" width="48" height="48"></canvas>
+      </div>
+      <div class="canvas-item">
+        <label>128x128</label>
+        <canvas id="newspaper-128" width="128" height="128"></canvas>
+      </div>
+    </div>
+    <button onclick="downloadIcons('newspaper')">Download Newspaper Icons</button>
+  </div>
+
+  <script>
+    const icons = {
+      shield: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
+      docsearch: "M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z",
+      book: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
+      newspaper: "M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+    };
+
+    function drawIconFromSVG(canvas, size, iconType) {
       const ctx = canvas.getContext('2d');
       const s = size;
+      const iconPath = icons[iconType];
       
       // Create SVG with gradient background and icon
       const svg = `
         <svg width="${s}" height="${s}" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="grad-${iconType}-${s}" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
               <stop offset="100%" style="stop-color:#9333ea;stop-opacity:1" />
             </linearGradient>
           </defs>
           <!-- Rounded rectangle background -->
-          <rect width="${s}" height="${s}" rx="${s * 0.2}" fill="url(#grad)"/>
-          <!-- Shield icon centered and scaled -->
+          <rect width="${s}" height="${s}" rx="${s * 0.2}" fill="url(#grad-${iconType}-${s})"/>
+          <!-- Icon centered and scaled -->
           <g transform="translate(${s/2}, ${s/2}) scale(${s/30})">
             <g transform="translate(-12, -12)">
-              <path d="${shieldPath}" 
+              <path d="${iconPath}" 
                     fill="none" 
                     stroke="white" 
                     stroke-width="2" 
@@ -104,31 +209,37 @@
       });
     }
     
-    async function generateIcons() {
+    async function downloadIcons(iconType) {
       for (const size of ['16', '48', '128']) {
-        const canvas = document.getElementById('c' + size);
+        const canvas = document.getElementById(`${iconType}-${size}`);
         const s = parseInt(size);
         
-        await drawIconFromSVG(canvas, s);
+        await drawIconFromSVG(canvas, s, iconType);
         
-        // Download
-        canvas.toBlob(blob => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'icon' + size + '.png';
-          a.click();
-          URL.revokeObjectURL(url);
+        // Download with promise to ensure sequential downloads
+        await new Promise((resolve) => {
+          canvas.toBlob(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `icon${size}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+            // Add delay between downloads to prevent browser blocking
+            setTimeout(resolve, 500);
+          });
         });
       }
-      alert('All icons generated and downloaded!');
+      alert(`${iconType.charAt(0).toUpperCase() + iconType.slice(1)} icons downloaded! Check your Downloads folder.`);
     }
     
-    // Draw previews on load
+    // Draw all previews on load
     (async () => {
-      for (const size of ['16', '48', '128']) {
-        const canvas = document.getElementById('c' + size);
-        await drawIconFromSVG(canvas, parseInt(size));
+      for (const iconType of ['shield', 'docsearch', 'book', 'newspaper']) {
+        for (const size of ['16', '48', '128']) {
+          const canvas = document.getElementById(`${iconType}-${size}`);
+          await drawIconFromSVG(canvas, parseInt(size), iconType);
+        }
       }
     })();
   </script>
