@@ -116,6 +116,8 @@ class FlaggedSnippet(BaseModel):
     index: Optional[List[int]] = Field(None, description="[start, end] character indices")
     reason: str = Field(..., description="Reason why this snippet is flagged")
     confidence: Optional[float] = Field(None, description="Confidence score (0-1)")
+    is_quote: Optional[bool] = Field(None, description="Whether this is a direct quote from a source")
+    article_supports_quote: Optional[bool] = Field(None, description="Whether the article endorses/supports this quote (vs challenging it)")
 
 
 class Explanation(BaseModel):

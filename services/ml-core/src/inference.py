@@ -606,78 +606,76 @@ def predict_full_analysis(
             unsubstantiated_claims = [c for c in fact_checked_claims if c['status'] == 'Unsubstantiated']
             verified_claims = [c for c in fact_checked_claims if c['status'] == 'Verified']
 
-            # Check if problematic content comes from quotes vs article's own assertions
-            # Count snippets by quote status
-            non_quoted_snippets = [s for s in flagged_snippets if not s.get('is_quote', False)]
-            quoted_snippets = [s for s in flagged_snippets if s.get('is_quote', False)]
+            # IMPROVED: Check if problematic content is supported/endorsed by the article
+            # Only penalize content that the article supports (either its own claims or endorsed quotes)
+            
+            # Separate snippets into:
+            # 1. Article's own claims (not quotes)
+            # 2. Quotes that article SUPPORTS/ENDORSES
+            # 3. Quotes that article CHALLENGES/FACT-CHECKS (should NOT be penalized)
+            
+            article_supported_misinfo = []
+            article_challenged_misinfo = []
+            
+            for snippet in flagged_snippets:
+                snippet_type = snippet.get('type', '').lower()
+                is_misinfo = 'misinformation' in snippet_type or 'disinformation' in snippet_type
+                
+                if not is_misinfo:
+                    continue
+                
+                is_quote = snippet.get('is_quote', False)
+                article_supports = snippet.get('article_supports_quote', True)  # Default to True for backwards compatibility
+                
+                if not is_quote or article_supports:
+                    # Either article's own claim OR a quote the article supports
+                    article_supported_misinfo.append(snippet)
+                else:
+                    # Quote that article challenges/fact-checks
+                    article_challenged_misinfo.append(snippet)
+            
+            # Log the breakdown
+            logger.info(f"Misinfo breakdown: {len(article_supported_misinfo)} supported by article, {len(article_challenged_misinfo)} challenged by article")
+            
+            # Only penalize if article supports misinformation
+            should_penalize = len(article_supported_misinfo) > 0
+            penalty_multiplier = 1.0  # Full penalties for supported misinfo
 
-            # Count misinformation/disinformation in non-quoted vs quoted
-            non_quoted_misinfo = [s for s in non_quoted_snippets if 'misinformation' in s.get('type', '').lower() or 'disinformation' in s.get('type', '').lower()]
-            quoted_misinfo = [s for s in quoted_snippets if 'misinformation' in s.get('type', '').lower() or 'disinformation' in s.get('type', '').lower()]
-
-            # Calculate what percentage of problematic snippets are quotes
-            total_misinfo_snippets = len(non_quoted_misinfo) + len(quoted_misinfo)
-            quote_percentage = len(quoted_misinfo) / max(total_misinfo_snippets, 1) if total_misinfo_snippets > 0 else 0
-
-            # Determine if we should apply penalties
-            # If >70% of misinformation is in quotes, don't penalize the article's score
-            # If 40-70% is quotes, apply reduced penalties
-            # If <40% is quotes, apply full penalties
-            should_penalize = quote_percentage < 0.7
-            penalty_multiplier = 1.0
-
-            if quote_percentage >= 0.7:
-                # Mostly quoted content - no penalties
-                penalty_multiplier = 0.0
-                logger.info(f"Skipping penalties: {quote_percentage*100:.0f}% of misinformation is in quotes ({len(quoted_misinfo)} quoted, {len(non_quoted_misinfo)} article)")
-            elif quote_percentage >= 0.4:
-                # Mixed - reduced penalties
-                penalty_multiplier = 0.3 + (0.7 - quote_percentage) * (0.7 / 0.3)  # Scale from 0.3 to 1.0
-                logger.info(f"Reducing penalties: {quote_percentage*100:.0f}% is quoted (multiplier: {penalty_multiplier:.2f})")
-            else:
-                # Mostly article content - full penalties
-                penalty_multiplier = 1.0
-                logger.info(f"Applying full penalties: only {quote_percentage*100:.0f}% is quoted")
-
-            if false_claims and should_penalize and penalty_multiplier > 0:
-                # Direct misinformation - harsh penalty (scaled by quote ratio)
-                penalty = max(int(25 * penalty_multiplier), 10)  # Minimum 10 point penalty if applying at all
+            if false_claims and should_penalize:
+                # Direct misinformation - harsh penalty for article-supported claims
+                penalty = 25
                 logger.info(f"MAJOR: Downgrading score due to {len(false_claims)} proven false claims (penalty: {penalty})")
                 result['trust_score'] = min(result['trust_score'], max(100 - penalty, 35))
+                result['label'] = "Likely Fake"
 
-                if penalty_multiplier >= 0.7:
-                    result['label'] = "Likely Fake"
+                if len(article_supported_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains or endorses {len(false_claims)} proven false claim(s)."
                 else:
-                    result['label'] = "Suspicious"
-
-                if len(non_quoted_misinfo) > 0:
-                    result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
-                else:
-                    result['explanation']['summary'] += f" Reports {len(false_claims)} false claim(s) made by sources."
-            elif misleading_claims and should_penalize and penalty_multiplier > 0:
+                    result['explanation']['summary'] += f" Contains false information."
+            elif misleading_claims and should_penalize:
                 # Misleading information - moderate penalty
-                penalty = max(int(15 * penalty_multiplier), 5)
+                penalty = 15
                 logger.info(f"MODERATE: Downgrading score due to {len(misleading_claims)} misleading claims (penalty: {penalty})")
                 result['trust_score'] = max(20, result['trust_score'] - (len(misleading_claims) * penalty))
                 if result['trust_score'] < 50:
                     result['label'] = "Suspicious"
 
-                if len(non_quoted_misinfo) > 0:
-                    result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+                if len(article_supported_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains or endorses {len(misleading_claims)} misleading claim(s)."
                 else:
-                    result['explanation']['summary'] += f" Reports {len(misleading_claims)} misleading claim(s) from sources."
-            elif unsubstantiated_claims and should_penalize and penalty_multiplier > 0:
+                    result['explanation']['summary'] += f" Contains misleading information."
+            elif unsubstantiated_claims and should_penalize:
                 # Unsubstantiated - minor penalty (warning)
-                penalty = max(int(8 * penalty_multiplier), 3)
+                penalty = 8
                 logger.info(f"MINOR: Warning due to {len(unsubstantiated_claims)} unsubstantiated claims (penalty: {penalty})")
                 result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * penalty))
                 if result['trust_score'] < 65:
                     result['label'] = "Suspicious"
 
-                if len(non_quoted_misinfo) > 0:
+                if len(article_supported_misinfo) > 0:
                     result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
                 else:
-                    result['explanation']['summary'] += f" Note: {len(unsubstantiated_claims)} quoted claim(s) could not be verified."
+                    result['explanation']['summary'] += f" Contains unverified claims."
             elif verified_claims and len(verified_claims) >= len(fact_checked_claims) / 2:
                 # Boost confidence if many claims are verified
                 logger.info("Boosting score due to verified claims")
@@ -686,9 +684,9 @@ def predict_full_analysis(
                     result['trust_score'] = max(result['trust_score'], 80)
                     result['label'] = "Likely True"
 
-            # Add informational note if there are quoted issues but no penalty
-            if not should_penalize and (false_claims or misleading_claims or unsubstantiated_claims):
-                result['explanation']['summary'] += f" Note: Article reports problematic claims from quoted sources, but accurately attributes them."
+            # Add informational note if article challenges problematic quotes (no penalty)
+            if len(article_challenged_misinfo) > 0 and (false_claims or misleading_claims or unsubstantiated_claims):
+                result['explanation']['summary'] += f" Note: Article reports and fact-checks {len(article_challenged_misinfo)} problematic claim(s) from quoted sources."
 
         # Save to cache
         cache.set(url or title or "", text, result)
@@ -934,68 +932,68 @@ async def predict_full_analysis_streaming(
             unsubstantiated_claims = [c for c in fact_checked_claims if c['status'] == 'Unsubstantiated']
             verified_claims = [c for c in fact_checked_claims if c['status'] == 'Verified']
 
-            # Get flagged snippets for quote analysis
+            # IMPROVED: Check if problematic content is supported/endorsed by the article (STREAMING VERSION)
             final_snippets = result.get('flagged_snippets', [])
-            non_quoted_snippets = [s for s in final_snippets if not s.get('is_quote', False)]
-            quoted_snippets = [s for s in final_snippets if s.get('is_quote', False)]
-
-            non_quoted_misinfo = [s for s in non_quoted_snippets if 'misinformation' in s.get('type', '').lower() or 'disinformation' in s.get('type', '').lower()]
-            quoted_misinfo = [s for s in quoted_snippets if 'misinformation' in s.get('type', '').lower() or 'disinformation' in s.get('type', '').lower()]
-
-            total_misinfo_snippets = len(non_quoted_misinfo) + len(quoted_misinfo)
-            quote_percentage = len(quoted_misinfo) / max(total_misinfo_snippets, 1) if total_misinfo_snippets > 0 else 0
-
-            should_penalize = quote_percentage < 0.7
-            penalty_multiplier = 1.0
-
-            if quote_percentage >= 0.7:
-                penalty_multiplier = 0.0
-            elif quote_percentage >= 0.4:
-                penalty_multiplier = 0.3 + (0.7 - quote_percentage) * (0.7 / 0.3)
-            else:
-                penalty_multiplier = 1.0
+            
+            article_supported_misinfo = []
+            article_challenged_misinfo = []
+            
+            for snippet in final_snippets:
+                snippet_type = snippet.get('type', '').lower()
+                is_misinfo = 'misinformation' in snippet_type or 'disinformation' in snippet_type
+                
+                if not is_misinfo:
+                    continue
+                
+                is_quote = snippet.get('is_quote', False)
+                article_supports = snippet.get('article_supports_quote', True)
+                
+                if not is_quote or article_supports:
+                    article_supported_misinfo.append(snippet)
+                else:
+                    article_challenged_misinfo.append(snippet)
+            
+            logger.info(f"STREAMING - Misinfo breakdown: {len(article_supported_misinfo)} supported, {len(article_challenged_misinfo)} challenged")
+            
+            should_penalize = len(article_supported_misinfo) > 0
 
             # Apply penalties based on severity
-            if false_claims and should_penalize and penalty_multiplier > 0:
-                penalty = max(int(25 * penalty_multiplier), 10)
+            if false_claims and should_penalize:
+                penalty = 25
                 result['trust_score'] = min(result['trust_score'], max(100 - penalty, 35))
+                result['label'] = "Likely Fake"
 
-                if penalty_multiplier >= 0.7:
-                    result['label'] = "Likely Fake"
+                if len(article_supported_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains or endorses {len(false_claims)} proven false claim(s)."
                 else:
-                    result['label'] = "Suspicious"
-
-                if len(non_quoted_misinfo) > 0:
-                    result['explanation']['summary'] += f" Contains {len(false_claims)} proven false claim(s)."
-                else:
-                    result['explanation']['summary'] += f" Reports {len(false_claims)} false claim(s) made by sources."
-            elif misleading_claims and should_penalize and penalty_multiplier > 0:
-                penalty = max(int(15 * penalty_multiplier), 5)
+                    result['explanation']['summary'] += f" Contains false information."
+            elif misleading_claims and should_penalize:
+                penalty = 15
                 result['trust_score'] = max(20, result['trust_score'] - (len(misleading_claims) * penalty))
                 if result['trust_score'] < 50:
                     result['label'] = "Suspicious"
 
-                if len(non_quoted_misinfo) > 0:
-                    result['explanation']['summary'] += f" Contains {len(misleading_claims)} misleading claim(s)."
+                if len(article_supported_misinfo) > 0:
+                    result['explanation']['summary'] += f" Contains or endorses {len(misleading_claims)} misleading claim(s)."
                 else:
-                    result['explanation']['summary'] += f" Reports {len(misleading_claims)} misleading claim(s) from sources."
-            elif unsubstantiated_claims and should_penalize and penalty_multiplier > 0:
-                penalty = max(int(8 * penalty_multiplier), 3)
+                    result['explanation']['summary'] += f" Contains misleading information."
+            elif unsubstantiated_claims and should_penalize:
+                penalty = 8
                 result['trust_score'] = max(30, result['trust_score'] - (len(unsubstantiated_claims) * penalty))
                 if result['trust_score'] < 65:
                     result['label'] = "Suspicious"
 
-                if len(non_quoted_misinfo) > 0:
+                if len(article_supported_misinfo) > 0:
                     result['explanation']['summary'] += f" Warning: {len(unsubstantiated_claims)} claim(s) could not be verified."
                 else:
-                    result['explanation']['summary'] += f" Note: {len(unsubstantiated_claims)} quoted claim(s) could not be verified."
+                    result['explanation']['summary'] += f" Contains unverified claims."
             elif verified_claims and len(verified_claims) >= len(fact_checked_claims) / 2:
                 if result['trust_score'] > 40:
                     result['trust_score'] = max(result['trust_score'], 80)
                     result['label'] = "Likely True"
 
-            if not should_penalize and (false_claims or misleading_claims or unsubstantiated_claims):
-                result['explanation']['summary'] += f" Note: Article reports problematic claims from quoted sources, but accurately attributes them."
+            if len(article_challenged_misinfo) > 0 and (false_claims or misleading_claims or unsubstantiated_claims):
+                result['explanation']['summary'] += f" Note: Article reports and fact-checks {len(article_challenged_misinfo)} problematic claim(s) from quoted sources."
 
         # Cache result
         cache.set(url or title or "", text, result)

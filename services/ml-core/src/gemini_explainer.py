@@ -133,7 +133,8 @@ class GeminiExplainer:
                     "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy", "Quoted Misinformation", "Quoted Disinformation", "Quoted Propaganda", "Quoted Fallacy">,
                     "reason": <concise explanation>,
                     "severity": <"low", "medium", "high">,
-                    "is_quote": <boolean, true if this is a direct quote from someone>
+                    "is_quote": <boolean, true if this is a direct quote from someone>,
+                    "article_supports_quote": <boolean, true if article endorses/amplifies the quote, false if article challenges/fact-checks it>
                 }}
             ],
             "verifiable_claims": [
@@ -170,13 +171,18 @@ class GeminiExplainer:
           * Set "is_quote": true
           * Prefix the type with "Quoted" (e.g., "Quoted Misinformation" instead of "Misinformation")
           * In the reason, mention WHO said it (e.g., "According to Senator X, ..." or "Quote from official Y...")
+          * CRITICALLY: Set "article_supports_quote" based on how the article treats the quote:
+            - TRUE if article SUPPORTS/ENDORSES/AMPLIFIES the quote (e.g., presents it as fact, agrees with it, uses it to support article's thesis)
+            - FALSE if article CHALLENGES/FACT-CHECKS/CRITICIZES the quote (e.g., fact-checks it, presents counterevidence, uses words like "falsely claimed", "debunked", "incorrect")
         - If flagged content is the article's own assertion:
           * Set "is_quote": false
+          * Set "article_supports_quote": true (since article is making the claim itself)
           * Use standard types (Misinformation, Disinformation, etc.)
         - Examples:
-          * Article says: "The event never happened" → is_quote: false, type: "Misinformation"
-          * Quote: 'Senator X claimed "this event never happened"' → is_quote: true, type: "Quoted Misinformation"
-          * Article framing: "Critics argue the policy is tyrannical" → is_quote: true, type: "Quoted Propaganda"
+          * Article says: "The event never happened" → is_quote: false, article_supports_quote: true, type: "Misinformation"
+          * Quote: 'Senator X claimed "this event never happened"' (article presents it as fact) → is_quote: true, article_supports_quote: true, type: "Quoted Misinformation"
+          * Quote: 'Senator X falsely claimed "this event never happened"' (article challenges it) → is_quote: true, article_supports_quote: false, type: "Quoted Misinformation"
+          * Article: "Critics argue the policy is tyrannical, but experts disagree" → is_quote: true, article_supports_quote: false
 
         CRITICAL RULES FOR RECENT EVENTS (2025-2026):
         - DO NOT flag recent events as false or fabricated based solely on your training data
