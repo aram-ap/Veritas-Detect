@@ -666,7 +666,9 @@ function App() {
         {result && (
           <div className="flex-1 flex flex-col items-center animate-fade-in">
             {/* Trust Dial */}
-            <TrustDial score={result.score} size={160} />
+            <div className="mt-8">
+              <TrustDial score={result.score} size={160} />
+            </div>
 
             {/* Bias indicator */}
             <div className="mt-6 w-full">
