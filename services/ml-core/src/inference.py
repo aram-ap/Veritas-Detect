@@ -481,7 +481,7 @@ def predict_full_analysis(
                     else:
                         # Historical Fact Route
                         logger.info(f"Claim classified as HISTORICAL: '{claim}'")
-                        fc_results = fact_checker.check_claims([claim], max_results_per_claim=2)
+                        fc_results = fact_checker.check_claims([claim], max_results_per_claim=1)
                         if fc_results:
                             fc_result = fc_results[0]
                             fact_checked_claims.append({
@@ -879,7 +879,7 @@ async def predict_full_analysis_streaming(
                         })
                     else:
                         # Historical Fact Route
-                        fc_results = fact_checker.check_claims([claim], max_results_per_claim=2)
+                        fc_results = fact_checker.check_claims([claim], max_results_per_claim=1)
                         if fc_results:
                             fc_result = fc_results[0]
                             fact_checked_claims.append({

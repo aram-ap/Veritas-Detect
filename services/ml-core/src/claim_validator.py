@@ -219,7 +219,7 @@ class ClaimValidator:
                     self.web_search = get_web_search()
 
                 # Search for multiple sources about this topic
-                for claim in claims[:3]:  # Limit to first 3 claims to avoid too many searches
+                for claim in claims[:2]:  # Limit to first 3 claims to avoid too many searches
                     # Create enhanced query with date context if available
                     search_query = claim
                     if article_date:
@@ -257,7 +257,7 @@ class ClaimValidator:
                         seen_urls.add(url)
                         unique_sources.append(source)
 
-                sources = unique_sources[:15]  # Limit to 15 sources
+                sources = unique_sources[:20]  # Limit to 15 sources
 
                 if has_verification and len(sources) > 0:
                     logger.info(f"Found {len(sources)} web sources for recent claim")
