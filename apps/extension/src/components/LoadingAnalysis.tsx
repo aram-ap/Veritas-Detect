@@ -1,29 +1,19 @@
+import { useState, useEffect } from 'react';
 import type { FlaggedSnippet } from './FlaggedContent';
 
 interface LoadingAnalysisProps {
   progress: number;
   statusMessage: string;
-  partialTrustScore?: number;
-  partialLabel?: string;
-  partialBias?: string;
   streamingSnippets: FlaggedSnippet[];
   onCancel: () => void;
 }
 
 /**
- * Get user-friendly status message based on progress
+ * Truncate text to a certain length
  */
-function getStatusMessage(progress: number, backendMessage?: string): string {
-  if (backendMessage) return backendMessage;
-
-  if (progress < 10) return 'Initializing analysis...';
-  if (progress < 20) return 'Preparing AI models...';
-  if (progress < 30) return 'Detecting bias...';
-  if (progress < 50) return 'Analyzing for misinformation...';
-  if (progress < 60) return 'Identifying suspicious content...';
-  if (progress < 80) return 'Fact-checking claims...';
-  if (progress < 90) return 'Verifying sources...';
-  return 'Finalizing analysis...';
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + '...';
 }
 
 /**
@@ -32,109 +22,161 @@ function getStatusMessage(progress: number, backendMessage?: string): string {
 export const LoadingAnalysis = ({
   progress,
   statusMessage,
-  partialTrustScore,
-  partialLabel,
-  partialBias,
   streamingSnippets,
   onCancel,
 }: LoadingAnalysisProps) => {
-  const displayMessage = getStatusMessage(progress, statusMessage);
-  const circumference = 2 * Math.PI * 36; // radius = 36
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
+  const [displayedMessages, setDisplayedMessages] = useState<string[]>([]);
+  const [animatedProgress, setAnimatedProgress] = useState(0);
+
+  // Smooth progress animation
+  useEffect(() => {
+    const diff = progress - animatedProgress;
+    if (Math.abs(diff) < 0.1) {
+      setAnimatedProgress(progress);
+      return;
+    }
+
+    const increment = diff * 0.1; // Ease out
+    const timer = setTimeout(() => {
+      setAnimatedProgress(prev => prev + increment);
+    }, 16); // ~60fps
+
+    return () => clearTimeout(timer);
+  }, [progress, animatedProgress]);
+
+  // Add new status messages to the log
+  useEffect(() => {
+    if (statusMessage && statusMessage.trim()) {
+      setDisplayedMessages(prev => {
+        // Don't add duplicates
+        if (prev[prev.length - 1] === statusMessage) return prev;
+        // Keep last 3 messages
+        const newMessages = [...prev, statusMessage];
+        return newMessages.slice(-3);
+      });
+    }
+  }, [statusMessage]);
+
+  // Add snippet detection messages
+  useEffect(() => {
+    if (streamingSnippets.length > 0) {
+      const latestSnippet = streamingSnippets[streamingSnippets.length - 1];
+      const snippetPreview = truncateText(latestSnippet.text, 40);
+      const message = `Found: "${snippetPreview}"`;
+
+      setDisplayedMessages(prev => {
+        if (prev[prev.length - 1] === message) return prev;
+        const newMessages = [...prev, message];
+        return newMessages.slice(-3);
+      });
+    }
+  }, [streamingSnippets.length]);
+
+  const circumference = 2 * Math.PI * 40; // radius = 40
+  const strokeDashoffset = circumference - (animatedProgress / 100) * circumference;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 animate-fade-in py-8">
-      {/* Progress Ring */}
+      {/* Animated Progress Ring */}
       <div className="relative">
-        {/* Background circle */}
-        <svg className="w-24 h-24 transform -rotate-90">
+        {/* Pulsing glow effect */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-32 h-32 rounded-full bg-indigo-500/20 blur-2xl animate-pulse" />
+        </div>
+
+        {/* Rotating gradient background */}
+        <div className="absolute inset-0 flex items-center justify-center animate-spin-slow">
+          <div className="w-28 h-28 rounded-full bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-pink-500/30 blur-md" />
+        </div>
+
+        {/* Progress ring */}
+        <svg className="w-28 h-28 transform -rotate-90 relative z-10">
+          {/* Background circle */}
           <circle
-            cx="48"
-            cy="48"
-            r="36"
+            cx="56"
+            cy="56"
+            r="40"
             stroke="currentColor"
-            strokeWidth="6"
+            strokeWidth="8"
             fill="none"
-            className="text-indigo-500/20"
+            className="text-indigo-500/10"
           />
-          {/* Progress circle */}
+          {/* Animated progress circle */}
           <circle
-            cx="48"
-            cy="48"
-            r="36"
-            stroke="currentColor"
-            strokeWidth="6"
+            cx="56"
+            cy="56"
+            r="40"
+            stroke="url(#gradient)"
+            strokeWidth="8"
             fill="none"
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            className="text-indigo-500 transition-all duration-500 ease-out"
+            className="transition-all duration-300 ease-out"
             strokeLinecap="round"
+            style={{
+              filter: 'drop-shadow(0 0 8px rgba(99, 102, 241, 0.6))',
+            }}
           />
+          {/* Gradient definition */}
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#6366f1" />
+              <stop offset="50%" stopColor="#a855f7" />
+              <stop offset="100%" stopColor="#ec4899" />
+            </linearGradient>
+          </defs>
         </svg>
+
         {/* Progress percentage */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xl font-bold text-white">
-            {Math.round(progress)}%
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <span className="text-2xl font-bold text-white tabular-nums">
+            {Math.round(animatedProgress)}%
           </span>
         </div>
       </div>
 
-      {/* Status Message */}
-      <div className="text-center max-w-xs">
-        <p className="text-white font-medium animate-pulse">{displayMessage}</p>
-        <p className="text-sm text-gray-400 mt-1">This may take a moment...</p>
+      {/* Activity Log */}
+      <div className="w-full max-w-sm">
+        <div className="bg-slate-800/40 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 min-h-[100px]">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Activity</p>
+          <div className="space-y-2">
+            {displayedMessages.length === 0 ? (
+              <div className="text-sm text-gray-400 italic">Initializing analysis...</div>
+            ) : (
+              displayedMessages.map((message, idx) => (
+                <div
+                  key={`${message}-${idx}`}
+                  className="text-sm text-gray-300 animate-slide-in-left flex items-start gap-2"
+                  style={{
+                    animationDelay: `${idx * 50}ms`,
+                  }}
+                >
+                  <svg
+                    className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5 animate-pulse"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="flex-1">{message}</span>
+                </div>
+              ))
+            )}
+          </div>
+          {streamingSnippets.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-700/50">
+              <p className="text-xs text-amber-400">
+                {streamingSnippets.length} {streamingSnippets.length === 1 ? 'issue' : 'issues'} detected
+              </p>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 text-center mt-2">This may take a moment...</p>
       </div>
-
-      {/* Partial Trust Score (if available) */}
-      {partialTrustScore !== undefined && (
-        <div className="w-full max-w-xs animate-fade-in">
-          <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-indigo-300 uppercase tracking-wide font-semibold">
-                Preliminary Score
-              </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200">
-                In Progress
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-white">
-                {Math.round(partialTrustScore)}
-              </span>
-              <span className="text-sm text-gray-400">/ 100</span>
-            </div>
-            {partialLabel && (
-              <p className="text-xs text-gray-300 mt-1 capitalize">
-                {partialLabel.replace('_', ' ')}
-              </p>
-            )}
-            {partialBias && partialBias !== 'unknown' && (
-              <p className="text-xs text-gray-400 mt-1">
-                Bias: <span className="capitalize">{partialBias}</span>
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Streaming Snippets */}
-      {streamingSnippets.length > 0 && (
-        <div className="w-full max-w-xs animate-fade-in">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase tracking-wide">
-              Issues Found
-            </span>
-            <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-300">
-              {streamingSnippets.length} {streamingSnippets.length === 1 ? 'issue' : 'issues'}
-            </span>
-          </div>
-          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
-            {streamingSnippets.map((snippet, idx) => (
-              <StreamingSnippetPreview key={idx} snippet={snippet} index={idx} />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Cancel Button */}
       <button
@@ -147,66 +189,35 @@ export const LoadingAnalysis = ({
   );
 };
 
-/**
- * Mini preview of streaming snippet
- */
-const StreamingSnippetPreview = ({
-  snippet,
-  index,
-}: {
-  snippet: FlaggedSnippet;
-  index: number;
-}) => {
-  const getTypeColor = (type?: string) => {
-    const t = type?.toLowerCase() || '';
-    if (t.includes('misinformation')) return 'border-red-500/40 bg-red-500/10 text-red-300';
-    if (t.includes('propaganda')) return 'border-orange-500/40 bg-orange-500/10 text-orange-300';
-    if (t.includes('fallacy')) return 'border-amber-500/40 bg-amber-500/10 text-amber-300';
-    return 'border-slate-500/40 bg-slate-700/10 text-gray-300';
-  };
-
-  return (
-    <div
-      className={`p-2.5 rounded-lg border transition-all duration-300 animate-slide-in-up ${getTypeColor(
-        snippet.type
-      )}`}
-      style={{
-        animationDelay: `${index * 100}ms`,
-      }}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-[10px] font-bold uppercase tracking-wide opacity-80">
-          {snippet.type || 'Suspicious'}
-        </span>
-        {snippet.is_quote && (
-          <span className="text-[9px] px-1 py-0.5 rounded-full bg-blue-500/30 border border-blue-400/30">
-            QUOTE
-          </span>
-        )}
-      </div>
-      <p className="text-xs leading-snug line-clamp-2 opacity-90">
-        "{snippet.text}"
-      </p>
-    </div>
-  );
-};
-
-// Add keyframe animation for slide-in effect
+// Add keyframe animations
 const style = document.createElement('style');
 style.textContent = `
-  @keyframes slide-in-up {
+  @keyframes slide-in-left {
     from {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translateX(-10px);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateX(0);
     }
   }
 
-  .animate-slide-in-up {
-    animation: slide-in-up 0.3s ease-out forwards;
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.4s ease-out forwards;
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 8s linear infinite;
   }
 `;
 document.head.appendChild(style);

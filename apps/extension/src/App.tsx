@@ -35,7 +35,6 @@ function App() {
   // Streaming state
   const [streamingProgress, setStreamingProgress] = useState<number>(0);
   const [streamingStatus, setStreamingStatus] = useState<string>('');
-  const [partialResult, setPartialResult] = useState<Partial<AnalysisResult> | null>(null);
   const [streamingSnippets, setStreamingSnippets] = useState<FlaggedSnippet[]>([]);
 
   const checkAuth = useCallback(async () => {
@@ -329,7 +328,6 @@ function App() {
     // Reset streaming state
     setStreamingProgress(0);
     setStreamingStatus('');
-    setPartialResult(null);
     setStreamingSnippets([]);
 
     try {
@@ -380,36 +378,131 @@ function App() {
 
       console.log('[Veritas] Sending text to streaming API:', response.text.substring(0, 100) + '...');
 
-      // Send streaming analyze request with credentials
-      const analyzeRes = await fetch(API_ENDPOINTS.ANALYZE_STREAM, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Automatically send cookies
-        body: JSON.stringify({
-          text: response.text,
-          title: response.title,
-          url: tab.url,
-          forceRefresh
-        }),
-        signal: abortController.signal, // Add abort signal
-      });
+      // Try streaming endpoint first
+      let analyzeRes: Response | null = null;
+      let useStreaming = true;
 
-      if (!analyzeRes.ok) {
-        if (analyzeRes.status === 401) {
-          throw new Error('Session expired. Please sign in again.');
+      try {
+        analyzeRes = await fetch(API_ENDPOINTS.ANALYZE_STREAM, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            text: response.text,
+            title: response.title,
+            url: tab.url,
+            forceRefresh
+          }),
+          signal: abortController.signal,
+        });
+
+        // Check if streaming endpoint exists and works
+        if (!analyzeRes.ok) {
+          if (analyzeRes.status === 404 || analyzeRes.status === 502) {
+            console.warn('[Veritas] Streaming endpoint not available, falling back to regular endpoint');
+            useStreaming = false;
+          } else if (analyzeRes.status === 401) {
+            throw new Error('Session expired. Please sign in again.');
+          } else if (analyzeRes.status === 429) {
+            const errorData = await analyzeRes.json();
+            throw new Error(errorData.message || 'Daily limit reached');
+          } else {
+            throw new Error('Analysis failed');
+          }
         }
-        if (analyzeRes.status === 429) {
-          const errorData = await analyzeRes.json();
-          throw new Error(errorData.message || 'Daily limit reached');
+
+        if (useStreaming && analyzeRes && !analyzeRes.body) {
+          console.warn('[Veritas] No response body for streaming, falling back to regular endpoint');
+          useStreaming = false;
         }
-        throw new Error('Analysis failed');
+      } catch (err) {
+        console.warn('[Veritas] Streaming endpoint error, falling back to regular endpoint:', err);
+        useStreaming = false;
       }
 
-      // Check for streaming response
-      if (!analyzeRes.body) {
-        throw new Error('Streaming not supported');
+      // Fallback to regular endpoint if streaming not available
+      if (!useStreaming) {
+        console.log('[Veritas] Using non-streaming endpoint');
+        analyzeRes = await fetch(API_ENDPOINTS.ANALYZE, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            text: response.text,
+            title: response.title,
+            url: tab.url,
+            forceRefresh
+          }),
+          signal: abortController.signal,
+        });
+
+        if (!analyzeRes.ok) {
+          if (analyzeRes.status === 401) {
+            throw new Error('Session expired. Please sign in again.');
+          }
+          if (analyzeRes.status === 429) {
+            const errorData = await analyzeRes.json();
+            throw new Error(errorData.message || 'Daily limit reached');
+          }
+          throw new Error('Analysis failed');
+        }
+
+        // Parse JSON response from non-streaming endpoint
+        const data = await analyzeRes.json();
+        const analysisResult: AnalysisResult = data;
+
+        console.log('[Veritas] Non-streaming result received:', analysisResult);
+
+        // Set the result directly
+        setResult(analysisResult);
+
+        console.log('[Veritas] Non-streaming result state updated');
+
+        // Cache the result
+        if (tab.url) {
+          chrome.storage.local.set({ [tab.url]: analysisResult }, () => {
+            if (chrome.runtime.lastError) {
+              console.error('[Veritas] Failed to cache non-streaming result:', chrome.runtime.lastError);
+            } else {
+              console.log('[Veritas] Non-streaming result cached successfully for', tab.url);
+            }
+          });
+          if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0) {
+            const highlightKey = `highlights_${tab.url}`;
+            chrome.storage.local.set({ [highlightKey]: analysisResult.flagged_snippets });
+          }
+        }
+
+        // Send highlights
+        if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0 && tab.id) {
+          const snippetsToHighlight = analysisResult.flagged_snippets;
+          setTimeout(async () => {
+            try {
+              await chrome.tabs.sendMessage(tab.id!, {
+                action: 'HIGHLIGHT_SNIPPETS',
+                snippets: snippetsToHighlight
+              });
+              console.log('[Veritas] Sent highlights to content script');
+            } catch (highlightError) {
+              console.error('[Veritas] Failed to send highlights:', highlightError);
+            }
+          }, 100);
+        }
+
+        // Update usage
+        await checkAuth();
+
+        // Exit early - we're done with non-streaming path
+        return;
+      }
+
+      // At this point, we know streaming is available and analyzeRes should exist
+      if (!analyzeRes || !analyzeRes.body) {
+        throw new Error('Streaming response has no body');
       }
 
       const reader = analyzeRes.body.getReader();
@@ -429,11 +522,9 @@ function App() {
               break;
 
             case 'partial':
-              setPartialResult({
-                score: event.trust_score,
-                bias: event.bias,
-                flagged_snippets: []
-              });
+              // Update progress for partial results
+              setStreamingProgress(event.progress || 50);
+              setStreamingStatus('Calculating trust score...');
               break;
 
             case 'snippet':
@@ -466,18 +557,29 @@ function App() {
 
       // Check if we got a final result
       if (!finalResult) {
-        throw new Error('No result received from stream');
+        console.error('[Veritas] No result received from stream - backend may not support streaming');
+        throw new Error('No result received from stream. The backend streaming endpoint may not be configured.');
       }
+
+      console.log('[Veritas] Setting final result:', finalResult);
 
       // Store in typed const for TypeScript
       const analysisResult: AnalysisResult = finalResult;
 
-      // Set the final result
+      // Set the final result (this must happen BEFORE the finally block)
       setResult(analysisResult);
+
+      console.log('[Veritas] Result state updated');
 
       // Cache the result locally for this URL
       if (tab.url) {
-        chrome.storage.local.set({ [tab.url]: analysisResult });
+        chrome.storage.local.set({ [tab.url]: analysisResult }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('[Veritas] Failed to cache result:', chrome.runtime.lastError);
+          } else {
+            console.log('[Veritas] Result cached successfully for', tab.url);
+          }
+        });
 
         // Also save highlights separately for persistence across reloads
         if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0) {
@@ -524,7 +626,6 @@ function App() {
       setAnalyzing(false);
       setStreamingProgress(0);
       setStreamingStatus('');
-      setPartialResult(null);
       setStreamingSnippets([]);
       abortControllerRef.current = null;
     }
@@ -536,6 +637,11 @@ function App() {
 
     console.log('[Veritas] Checking cache for URL:', currentUrl);
 
+    // Don't check cache if currently analyzing - let the analysis complete
+    if (analyzing) {
+      return;
+    }
+
     chrome.storage.local.get(currentUrl, (items) => {
       if (chrome.runtime.lastError) {
         console.error('[Veritas] Cache read error:', chrome.runtime.lastError);
@@ -546,39 +652,41 @@ function App() {
         console.log('[Veritas] Found cached result for', currentUrl);
         const cachedResult = items[currentUrl] as AnalysisResult;
 
-        // Only set result if not currently analyzing
-        if (!analyzing) {
-          setResult(cachedResult);
-          setError(null);
+        setResult(cachedResult);
+        setError(null);
 
-          // Send highlights for cached results (non-blocking)
-          if (cachedResult.flagged_snippets && cachedResult.flagged_snippets.length > 0) {
-            setTimeout(async () => {
-              try {
-                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                if (tab.id) {
-                  await chrome.tabs.sendMessage(tab.id, {
-                    action: 'HIGHLIGHT_SNIPPETS',
-                    snippets: cachedResult.flagged_snippets
-                  });
-                  console.log('[Veritas] Sent cached highlights to content script');
-                }
-              } catch (error) {
-                console.error('[Veritas] Failed to send cached highlights:', error);
+        // Send highlights for cached results (non-blocking)
+        if (cachedResult.flagged_snippets && cachedResult.flagged_snippets.length > 0) {
+          setTimeout(async () => {
+            try {
+              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+              if (tab.id) {
+                await chrome.tabs.sendMessage(tab.id, {
+                  action: 'HIGHLIGHT_SNIPPETS',
+                  snippets: cachedResult.flagged_snippets
+                });
+                console.log('[Veritas] Sent cached highlights to content script');
               }
-            }, 200);
-          }
+            } catch (error) {
+              console.error('[Veritas] Failed to send cached highlights:', error);
+            }
+          }, 200);
         }
       } else {
         console.log('[Veritas] No cached result for', currentUrl);
-        // Clear results if no cache found for this URL
-        if (!analyzing) {
-          setResult(null);
-          setError(null);
-        }
+        // Only clear results if we don't have any (URL changed to a new page)
+        // Don't clear if we have a result - user might have just completed an analysis
+        setResult((prevResult) => {
+          if (prevResult) {
+            console.log('[Veritas] Keeping existing result, not clearing from cache miss');
+            return prevResult;
+          }
+          return null;
+        });
+        setError(null);
       }
     });
-  }, [currentUrl, analyzing]);
+  }, [currentUrl]);
 
   const getBiasStyle = (bias: string) => {
     const lowerBias = (bias || '').toLowerCase();
@@ -725,9 +833,6 @@ function App() {
           <LoadingAnalysis
             progress={streamingProgress}
             statusMessage={streamingStatus}
-            partialTrustScore={partialResult?.score}
-            partialLabel={partialResult?.score !== undefined ? (partialResult.score >= 70 ? 'trustworthy' : partialResult.score >= 40 ? 'questionable' : 'unreliable') : undefined}
-            partialBias={partialResult?.bias}
             streamingSnippets={streamingSnippets}
             onCancel={handleCancel}
           />
