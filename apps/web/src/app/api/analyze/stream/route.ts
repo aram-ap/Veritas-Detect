@@ -271,11 +271,12 @@ async function handleCompletion(
     const hasMisinformation = score < 70 || flaggedSnippets.length > 0;
     const bias = result.bias || 'unknown';
 
-    // Extract unique tags from flagged snippets
-    const tags = new Set<string>();
+    // Extract all types from flagged snippets (each snippet has a 'type' field)
+    // Store all types, not just unique ones, to count every instance of flagged content
+    const tags: string[] = [];
     flaggedSnippets.forEach((snippet: any) => {
-      if (snippet.tags && Array.isArray(snippet.tags)) {
-        snippet.tags.forEach((tag: string) => tags.add(tag));
+      if (snippet.type) {
+        tags.push(snippet.type);
       }
     });
 
@@ -296,7 +297,7 @@ async function handleCompletion(
             title: title || existingRecord.title,
             trustScore: score,
             hasMisinformation,
-            flaggedTags: JSON.stringify(Array.from(tags)),
+            flaggedTags: JSON.stringify(tags),
             bias: bias,
             analyzedAt: new Date(),
           }
@@ -309,7 +310,7 @@ async function handleCompletion(
             title: title || null,
             trustScore: score,
             hasMisinformation,
-            flaggedTags: JSON.stringify(Array.from(tags)),
+            flaggedTags: JSON.stringify(tags),
             bias: bias,
           }
         });
@@ -323,7 +324,7 @@ async function handleCompletion(
           title: title || null,
           trustScore: score,
           hasMisinformation,
-          flaggedTags: JSON.stringify(Array.from(tags)),
+          flaggedTags: JSON.stringify(tags),
           bias: bias,
         }
       });
