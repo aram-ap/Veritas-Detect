@@ -808,18 +808,13 @@ async def predict_full_analysis_streaming(
         # Yield initial results (basic analysis)
         yield f"data: {json.dumps({'type': 'partial', 'trust_score': gemini_result['trust_score'], 'label': gemini_result['label'], 'bias': final_bias, 'progress': 50})}\n\n"
 
-        # Sort and yield snippets incrementally
+        # Sort snippets by index
         yield f"data: {json.dumps({'type': 'status', 'message': 'Finding flagged content...', 'progress': 60})}\n\n"
 
         flagged_snippets = gemini_result.get('flagged_snippets', [])
         flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
 
-        # Yield snippets as they're processed
-        for i, snippet in enumerate(flagged_snippets):
-            progress = 60 + (i + 1) / len(flagged_snippets) * 20  # 60-80% progress
-            yield f"data: {json.dumps({'type': 'snippet', 'snippet': snippet, 'progress': progress})}\n\n"
-            # Small delay to simulate processing and make streaming visible
-            await asyncio.sleep(0.1)
+        # Don't yield snippets yet - wait until after validation
 
         # Hybrid Fact-Checking Pipeline
         fact_checked_claims = []
@@ -833,7 +828,7 @@ async def predict_full_analysis_streaming(
             logger.warning(f"SOURCES DEBUG (STREAMING): No verifiable claims found! Sources cannot be added.")
 
         if verifiable_claims:
-            yield f"data: {json.dumps({'type': 'status', 'message': f'Verifying {len(verifiable_claims)} claims (Hybrid Mode)...', 'progress': 80})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Verifying {len(verifiable_claims)} claims (Hybrid Mode)...', 'progress': 70})}\n\n"
 
             try:
                 fact_checker = get_fact_checker()
@@ -900,7 +895,7 @@ async def predict_full_analysis_streaming(
                 logger.error(f"Hybrid verification failed: {e}")
 
         # Validate flagged snippets
-        yield f"data: {json.dumps({'type': 'status', 'message': 'Validating claims for sources...', 'progress': 90})}\n\n"
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Validating claims for sources...', 'progress': 85})}\n\n"
 
         claim_validator = get_claim_validator()
 
@@ -930,6 +925,17 @@ async def predict_full_analysis_streaming(
             require_sources=require_sources,
             article_date=article_date
         )
+
+        # NOW yield the validated snippets incrementally (after validation)
+        validated_snippets = result.get('flagged_snippets', [])
+        if validated_snippets:
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Found {len(validated_snippets)} flagged items...', 'progress': 90})}\n\n"
+            
+            for i, snippet in enumerate(validated_snippets):
+                progress = 90 + (i + 1) / len(validated_snippets) * 8  # 90-98% progress
+                yield f"data: {json.dumps({'type': 'snippet', 'snippet': snippet, 'progress': progress})}\n\n"
+                # Small delay to simulate processing and make streaming visible
+                await asyncio.sleep(0.05)
 
         # Apply aggregation logic to final result (same logic as non-streaming)
         # CRITICAL: Don't penalize score for quoted misinformation

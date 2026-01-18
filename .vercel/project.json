@@ -1,1 +1,16 @@
-{"projectId":"prj_B5HF4hZtAjoGjyFjbq13vBqdjuEM","orgId":"team_Uwi3zSfb2aPCigWXsyWwCXTG","projectName":"veritas-detect"}
+{
+  "projectId": "prj_B5HF4hZtAjoGjyFjbq13vBqdjuEM",
+  "orgId": "team_Uwi3zSfb2aPCigWXsyWwCXTG",
+  "projectName": "veritas-detect",
+  "settings": {
+    "createdAt": 1768657738184,
+    "framework": "nextjs",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": "apps/web",
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}
