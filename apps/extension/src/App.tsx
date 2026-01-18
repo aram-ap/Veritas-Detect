@@ -27,6 +27,7 @@ function App() {
   const [selectedSnippetIndex, setSelectedSnippetIndex] = useState<number | null>(null);
   const snippetRefs = useRef<(HTMLDivElement | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [clearingData, setClearingData] = useState(false);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -229,6 +230,66 @@ function App() {
     chrome.tabs.create({ url: API_ENDPOINTS.AUTH_LOGOUT });
     setAuthState('unauthenticated');
     setResult(null);
+  };
+
+  const handleClearSiteData = async () => {
+    setClearingData(true);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const url = tab.url || currentUrl;
+
+      if (!url) {
+        throw new Error('No URL found');
+      }
+
+      // 1. Clear local storage for this URL
+      const highlightKey = `highlights_${url}`;
+      await chrome.storage.local.remove([url, highlightKey]);
+      console.log('[Veritas] Cleared local storage for:', url);
+
+      // 2. Clear highlights on current page
+      if (tab.id) {
+        try {
+          await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_HIGHLIGHTS' });
+          console.log('[Veritas] Cleared highlights');
+        } catch (e) {
+          // Content script may not be ready, that's ok
+          console.log('[Veritas] Could not clear highlights:', e);
+        }
+      }
+
+      // 3. Clear server-side history for this URL
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/history/clear`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ url }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to clear server history for this URL');
+        }
+        console.log('[Veritas] Cleared server history for:', url);
+      } catch (err) {
+        console.error('[Veritas] Failed to clear server history:', err);
+        // Continue even if server request fails
+      }
+
+      // 4. Reset UI state
+      setResult(null);
+      setError(null);
+      setSelectedSnippetIndex(null);
+
+      console.log('[Veritas] Site data cleared successfully for:', url);
+    } catch (err) {
+      console.error('[Veritas] Error clearing site data:', err);
+      setError('Failed to clear site data');
+    } finally {
+      setClearingData(false);
+    }
   };
 
   const handleAnalyze = async (forceRefresh = true) => {
@@ -497,12 +558,22 @@ function App() {
           </div>
           <span className="text-white font-semibold">Veritas</span>
         </button>
-        <button
-          onClick={handleLogout}
-          className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-slate-800"
-        >
-          Sign Out
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleClearSiteData}
+            disabled={clearingData}
+            className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Clear cached data for this site"
+          >
+            {clearingData ? 'Clearing...' : 'Clear Site'}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-slate-800"
+          >
+            Sign Out
+          </button>
+        </div>
       </header>
 
       {/* User welcome - only show when no result and not analyzing */}

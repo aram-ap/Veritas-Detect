@@ -2,7 +2,7 @@ import { auth0 } from '@/lib/auth0';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   // Verify user is authenticated
   const session = await auth0.getSession();
   if (!session || !session.user) {
@@ -19,17 +19,29 @@ export async function DELETE() {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Delete all analysis records for this user
+    // Check if a specific URL is provided
+    let url: string | null = null;
+    try {
+      const body = await req.json();
+      url = body.url || null;
+    } catch {
+      // No body or invalid JSON, clear all records
+    }
+
+    // Delete analysis records for this user
     const result = await prisma.analysisRecord.deleteMany({
       where: {
-        userId: userProfile.id
+        userId: userProfile.id,
+        ...(url ? { url } : {}) // Only filter by URL if provided
       }
     });
 
     return NextResponse.json({
       success: true,
       deletedCount: result.count,
-      message: `Cleared ${result.count} analysis records`
+      message: url 
+        ? `Cleared ${result.count} analysis record(s) for ${url}`
+        : `Cleared ${result.count} analysis records`
     });
   } catch (error) {
     console.error('Clear history error:', error);
