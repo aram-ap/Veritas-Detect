@@ -247,6 +247,16 @@ function App() {
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      // Clear existing highlights before starting new analysis
+      if (tab.id) {
+        try {
+          await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_HIGHLIGHTS' });
+        } catch (e) {
+          // Content script may not be ready, that's ok
+          console.log('[Veritas] Could not clear highlights:', e);
+        }
+      }
       if (!tab.id) {
         throw new Error('No active tab found');
       }
@@ -313,6 +323,12 @@ function App() {
       // Cache the result locally for this URL
       if (tab.url) {
         chrome.storage.local.set({ [tab.url]: data });
+
+        // Also save highlights separately for persistence across reloads
+        if (data.flagged_snippets && data.flagged_snippets.length > 0) {
+          const highlightKey = `highlights_${tab.url}`;
+          chrome.storage.local.set({ [highlightKey]: data.flagged_snippets });
+        }
       }
 
       // Send highlights to content script (non-blocking, don't await)
@@ -467,7 +483,7 @@ function App() {
 
   // Authenticated state
   return (
-    <div className="w-full h-full bg-gradient-to-b from-slate-900 to-slate-950 p-5 flex flex-col overflow-auto">
+    <div className="w-full h-full bg-gradient-to-b from-slate-900 to-slate-950 p-5 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
@@ -486,16 +502,18 @@ function App() {
         </button>
       </header>
 
-      {/* User welcome */}
-      <div className="mb-4 px-3 py-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-        <div className="flex items-center gap-2 text-emerald-400 text-sm">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Welcome, {userName}</span>
+      {/* User welcome - only show when no result and not analyzing */}
+      {!result && !analyzing && !error && (
+        <div className="mb-4 px-3 py-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+          <div className="flex items-center gap-2 text-emerald-400 text-sm">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Welcome, {userName}</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Current page */}
-      {currentUrl && (
+      {/* Current page - only show when no result and not analyzing */}
+      {currentUrl && !result && !analyzing && !error && (
         <div className="mb-5 px-3 py-2 bg-slate-800/50 rounded-lg">
           <p className="text-xs text-gray-500 mb-1">Analyzing page:</p>
           <p className="text-xs text-gray-300 truncate">{currentUrl}</p>
@@ -503,7 +521,7 @@ function App() {
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {!result && !analyzing && (
           <div className="flex-1 flex flex-col items-center justify-center">
             <button
@@ -571,6 +589,7 @@ function App() {
               snippets={result.flagged_snippets}
               snippetRefs={snippetRefs}
               selectedSnippetIndex={selectedSnippetIndex}
+              onSnippetSelect={setSelectedSnippetIndex}
             />
 
             {/* Info about score */}
@@ -586,23 +605,27 @@ function App() {
                  Analysis by: {result.metadata.model || result.metadata.source || 'Unknown'}
                </div>
             )}
-
-            {/* Rescan button */}
-            <button
-              onClick={() => handleAnalyze(true)} // Pass true for forceRefresh to bypass cache
-              disabled={analyzing}
-              className="mt-6 w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Rescan Page</span>
-              </div>
-            </button>
           </div>
         )}
       </div>
+
+      {/* Rescan button - Always visible at bottom */}
+      {(result || error) && (
+        <div className="flex-shrink-0 mt-4 p-4 border-t border-slate-700/50 bg-slate-900/50">
+          <button
+            onClick={() => handleAnalyze(true)} // Pass true for forceRefresh to bypass cache
+            disabled={analyzing}
+            className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Rescan Page</span>
+            </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

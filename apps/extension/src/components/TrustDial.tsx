@@ -39,13 +39,38 @@ export function TrustDial({ score, size = 180 }: TrustDialProps) {
   return (
     <div className="flex flex-col items-center">
       <div
-        className={`relative rounded-full bg-gradient-to-br ${bgGradient} p-2`}
-        style={{ width: size + 16, height: size + 16 }}
+        className="relative"
+        style={{ width: size, height: size, overflow: 'visible' }}
       >
+        {/* Glow effect background */}
+        <div
+          className="absolute rounded-full blur-2xl"
+          style={{
+            background: `radial-gradient(circle, ${color}60 0%, ${color}30 40%, transparent 70%)`,
+            width: size * 1.5,
+            height: size * 1.5,
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)'
+          }}
+        />
+
+        {/* Gradient background */}
+        <div
+          className={`absolute rounded-full bg-gradient-to-br ${bgGradient}`}
+          style={{
+            width: size * 1.1,
+            height: size * 1.1,
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)'
+          }}
+        />
+
         <svg
           width={size}
           height={size}
-          className="transform -rotate-90"
+          className="transform -rotate-90 relative z-10"
         >
           {/* Background circle */}
           <circle
@@ -69,13 +94,13 @@ export function TrustDial({ score, size = 180 }: TrustDialProps) {
             strokeDashoffset={strokeDashoffset}
             className="transition-all duration-1000 ease-out"
             style={{
-              filter: `drop-shadow(0 0 8px ${color})`
+              filter: `drop-shadow(0 0 6px ${color})`
             }}
           />
         </svg>
 
         {/* Center content */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
           <span
             className="text-5xl font-bold tabular-nums"
             style={{ color }}

@@ -23,9 +23,10 @@ interface FlaggedContentProps {
   snippets: FlaggedSnippet[];
   snippetRefs?: React.MutableRefObject<(HTMLDivElement | null)[]>;
   selectedSnippetIndex?: number | null;
+  onSnippetSelect?: (index: number) => void;
 }
 
-export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex }: FlaggedContentProps) => {
+export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex, onSnippetSelect }: FlaggedContentProps) => {
   if (!snippets || snippets.length === 0) {
     return (
         <div className="mt-6 w-full">
@@ -45,6 +46,11 @@ export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex }: 
   });
 
   const handleSnippetClick = async (index: number) => {
+    // Update selected state in parent
+    if (onSnippetSelect) {
+      onSnippetSelect(index);
+    }
+
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) return;
@@ -61,7 +67,7 @@ export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex }: 
   return (
     <div className="mt-6 w-full">
       <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Flagged Content</p>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {sortedSnippets.map((snippet, idx) => (
           <SnippetItem
             key={idx}
@@ -115,21 +121,15 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
 
     const colors = getColors(snippet.type, snippet.is_quote);
 
-    const handleClick = (e: React.MouseEvent) => {
-      // If clicking on the expand button area, toggle expansion
-      const target = e.target as HTMLElement;
-      if (target.closest('.expand-button')) {
-        setExpanded(!expanded);
-      } else {
-        // Otherwise, scroll to the snippet on the page
-        onSnippetClick(index);
-      }
+    const handleClick = () => {
+      // Scroll to the snippet on the page (expand button handles its own clicks)
+      onSnippetClick(index);
     };
 
     return (
       <div
         ref={ref}
-        className={`rounded-xl border transition-all duration-200 overflow-hidden ${colors} cursor-pointer hover:brightness-110 active:scale-[0.98] ${isSelected ? 'ring-2 ring-white/30' : ''}`}
+        className={`rounded-xl transition-all duration-200 overflow-hidden ${colors} cursor-pointer hover:brightness-110 active:scale-[0.98] ${isSelected ? 'border-[3px] ring-2 ring-white/50 shadow-lg' : 'border'}`}
         onClick={handleClick}
       >
       <div className="p-3 flex items-start justify-between gap-2">
@@ -166,7 +166,10 @@ const SnippetItem = forwardRef<HTMLDivElement, SnippetItemProps>(
         </div>
         <button
           className="expand-button flex-shrink-0"
-          onClick={() => setExpanded(!expanded)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(!expanded);
+          }}
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           <div className={`transform transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>

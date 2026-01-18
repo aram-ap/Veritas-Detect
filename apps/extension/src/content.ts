@@ -5,7 +5,7 @@ let currentHighlights: { element: HTMLElement; snippetId: string }[] = [];
 let articleRoot: HTMLElement | null = null;
 let lastSnippets: FlaggedSnippet[] = []; // Store last snippets for restoration
 
-function extractArticleText(): string {
+function findArticleRoot(): HTMLElement {
   // Try to find article content using common selectors
   const articleSelectors = [
     'article',
@@ -22,24 +22,30 @@ function extractArticleText(): string {
   for (const selector of articleSelectors) {
     const element = document.querySelector(selector) as HTMLElement;
     if (element && element.textContent && element.textContent.trim().length > 200) {
-      articleRoot = element; // Store for later highlighting
-      return cleanText(element.textContent);
+      return element;
     }
   }
 
-  // Fallback: get main body text, filtering out navigation, headers, footers
-  const body = document.body;
-  const excludeSelectors = ['nav', 'header', 'footer', 'aside', '.sidebar', '.advertisement', '.ad', 'script', 'style', 'noscript'];
+  // Fallback to body
+  return document.body;
+}
 
-  const clone = body.cloneNode(true) as HTMLElement;
+function extractArticleText(): string {
+  // Find and set the article root
+  articleRoot = findArticleRoot();
 
-  // Remove excluded elements from clone
-  excludeSelectors.forEach(selector => {
-    clone.querySelectorAll(selector).forEach(el => el.remove());
-  });
+  // Get text content
+  if (articleRoot === document.body) {
+    // For body, filter out navigation, headers, footers
+    const excludeSelectors = ['nav', 'header', 'footer', 'aside', '.sidebar', '.advertisement', '.ad', 'script', 'style', 'noscript'];
+    const clone = articleRoot.cloneNode(true) as HTMLElement;
+    excludeSelectors.forEach(selector => {
+      clone.querySelectorAll(selector).forEach(el => el.remove());
+    });
+    return cleanText(clone.textContent || '');
+  }
 
-  articleRoot = body; // Fallback to body
-  return cleanText(clone.textContent || '');
+  return cleanText(articleRoot.textContent || '');
 }
 
 function cleanText(text: string): string {
@@ -94,8 +100,19 @@ interface FlaggedSnippet {
 function highlightSnippets(snippets: FlaggedSnippet[]) {
   clearHighlights();
 
-  if (!articleRoot || !snippets || snippets.length === 0) {
-    console.log('[Veritas] No snippets to highlight or article root not found');
+  if (!snippets || snippets.length === 0) {
+    console.log('[Veritas] No snippets to highlight');
+    return;
+  }
+
+  // Ensure articleRoot is set
+  if (!articleRoot) {
+    console.log('[Veritas] Article root not set, finding it now...');
+    articleRoot = findArticleRoot();
+  }
+
+  if (!articleRoot) {
+    console.log('[Veritas] Could not find article root');
     return;
   }
 
@@ -307,7 +324,7 @@ function highlightSingleSnippet(
           document.querySelectorAll('.veritas-tooltip').forEach(t => t.remove());
 
           if (!isExpanded) {
-            // Expand all parts of this highlight
+            // Expand all parts of this highlight (persistent)
             highlightElements.forEach(el => el.classList.add('veritas-expanded'));
 
             // Create tooltip with full context
@@ -331,18 +348,16 @@ function highlightSingleSnippet(
 
             document.body.appendChild(tooltip);
 
-            // Close button handler
+            // Close button handler - only closes tooltip, keeps outline
             tooltip.querySelector('.veritas-tooltip-close')?.addEventListener('click', () => {
               tooltip.remove();
-              highlightElements.forEach(el => el.classList.remove('veritas-expanded'));
             });
 
-            // Auto-close when clicking outside
+            // Auto-close tooltip when clicking outside (but keep the outline)
             setTimeout(() => {
               const closeOnClickOutside = (event: MouseEvent) => {
                 if (!tooltip.contains(event.target as Node) && !highlightElements.some(el => el === event.target)) {
                   tooltip.remove();
-                  highlightElements.forEach(el => el.classList.remove('veritas-expanded'));
                   document.removeEventListener('click', closeOnClickOutside);
                 }
               };
@@ -426,9 +441,10 @@ function injectHighlightStyles() {
 
     /* Expanded state */
     .veritas-highlight.veritas-expanded {
-      background-color: rgba(255, 255, 255, 0.15) !important;
-      outline: 2px solid currentColor;
-      outline-offset: 2px;
+      background-color: rgba(255, 255, 255, 0.2) !important;
+      border-bottom-width: 4px !important;
+      outline: 3px solid black;
+      outline-offset: 3px;
       border-radius: 3px;
     }
 
@@ -564,7 +580,7 @@ function scrollToSnippet(snippetIndex: number) {
       block: 'center'
     });
 
-    // Add expanded class to show border/outline effect
+    // Add expanded class to show border/outline effect (persistent)
     highlights.forEach(highlight => {
       highlight.element.classList.add('veritas-expanded');
     });
@@ -577,18 +593,96 @@ function scrollToSnippet(snippetIndex: number) {
       }, 10);
     });
 
-    // After animation completes, remove expanded class
-    setTimeout(() => {
-      highlights.forEach(highlight => {
-        highlight.element.classList.remove('veritas-expanded');
-      });
-    }, 2000);
-
     console.log(`[Veritas] Scrolled to snippet ${snippetIndex} (${highlights.length} occurrence(s))`);
   } else {
     console.warn(`[Veritas] Snippet ${snippetIndex} not found for scrolling`);
   }
 }
+
+// Function to restore highlights from storage
+function restoreHighlightsFromStorage() {
+  const currentUrl = window.location.href;
+  const highlightKey = `highlights_${currentUrl}`;
+
+  console.log('[Veritas] Attempting to restore highlights for:', currentUrl);
+
+  chrome.storage.local.get([highlightKey], (result) => {
+    const savedHighlights = result[highlightKey];
+    if (savedHighlights && Array.isArray(savedHighlights) && savedHighlights.length > 0) {
+      console.log(`[Veritas] Found ${savedHighlights.length} saved highlights, restoring...`);
+
+      // Ensure articleRoot is found before highlighting
+      if (!articleRoot) {
+        articleRoot = findArticleRoot();
+      }
+
+      // Apply highlights
+      highlightSnippets(savedHighlights);
+
+      console.log('[Veritas] Highlights restoration complete');
+    } else {
+      console.log('[Veritas] No saved highlights found for this URL');
+    }
+  });
+}
+
+// Auto-restore highlights on page load
+(function autoRestoreHighlights() {
+  console.log('[Veritas] Content script initialized, document state:', document.readyState);
+
+  // Function to wait for page to be ready and then restore
+  const waitAndRestore = (delay: number) => {
+    setTimeout(() => {
+      // Double-check that the page is ready
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        restoreHighlightsFromStorage();
+      } else {
+        console.log('[Veritas] Page not ready yet, waiting...');
+        waitAndRestore(500);
+      }
+    }, delay);
+  };
+
+  // Wait for page to be fully loaded
+  if (document.readyState === 'loading') {
+    // Page is still loading, wait for DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[Veritas] DOMContentLoaded event fired');
+      waitAndRestore(800); // Give more time for dynamic content to load
+    });
+  } else if (document.readyState === 'interactive') {
+    // DOM is ready but resources may still be loading
+    console.log('[Veritas] Document is interactive, waiting for complete...');
+    window.addEventListener('load', () => {
+      console.log('[Veritas] Window load event fired');
+      waitAndRestore(500);
+    });
+  } else {
+    // Page already fully loaded
+    console.log('[Veritas] Document already complete');
+    waitAndRestore(500);
+  }
+
+  // Listen for page visibility changes (when user switches back to tab)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentHighlights.length === 0 && lastSnippets.length === 0) {
+      console.log('[Veritas] Page became visible with no highlights, checking storage');
+      setTimeout(restoreHighlightsFromStorage, 300);
+    }
+  });
+
+  // Listen for page navigation (for SPAs)
+  let lastUrl = window.location.href;
+  new MutationObserver(() => {
+    const currentUrl = window.location.href;
+    if (currentUrl !== lastUrl) {
+      console.log('[Veritas] URL changed from', lastUrl, 'to', currentUrl);
+      lastUrl = currentUrl;
+      clearHighlights();
+      setTimeout(restoreHighlightsFromStorage, 1200);
+    }
+  }).observe(document, { subtree: true, childList: true });
+})();
 
 // Message listener
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
