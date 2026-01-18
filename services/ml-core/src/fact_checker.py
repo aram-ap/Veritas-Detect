@@ -143,7 +143,7 @@ class FactCheckService:
                 "languageCode": "en"
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=5)
             response.raise_for_status()
 
             data = response.json()
@@ -200,7 +200,7 @@ class FactCheckService:
                 "engine": "google"
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=5)
             response.raise_for_status()
 
             data = response.json()

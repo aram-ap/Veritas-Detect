@@ -219,7 +219,7 @@ class ClaimValidator:
                     self.web_search = get_web_search()
 
                 # Search for multiple sources about this topic
-                for claim in claims[:2]:  # Limit to first 3 claims to avoid too many searches
+                for claim in claims[:1]:  # Limit to first 1 claim for speed (most important one)
                     # Create enhanced query with date context if available
                     search_query = claim
                     if article_date:
@@ -238,15 +238,7 @@ class ClaimValidator:
                         # Add all credible sources found
                         sources.extend(news_results)
                         has_verification = True
-
-                        # Also try a general verification search for more sources
-                        general_results = self.web_search.search_for_verification(
-                            claim,
-                            num_results=3,
-                            recent_only=True
-                        )
-                        if general_results:
-                            sources.extend(general_results)
+                        # Skip redundant general search if we already have consensus results (SPEED OPTIMIZATION)
 
                 # Remove duplicates by URL
                 seen_urls = set()
@@ -257,7 +249,7 @@ class ClaimValidator:
                         seen_urls.add(url)
                         unique_sources.append(source)
 
-                sources = unique_sources[:15]  # Limit to 15 sources
+                sources = unique_sources[:10]  # Limit to 10 sources (reduced for speed)
 
                 if has_verification and len(sources) > 0:
                     logger.info(f"Found {len(sources)} web sources for recent claim")

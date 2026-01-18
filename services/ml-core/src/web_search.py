@@ -103,7 +103,7 @@ class WebSearchService:
                 # Search for results from the last 30 days
                 params["dateRestrict"] = "m1"  # Last month
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=5)
             response.raise_for_status()
 
             data = response.json()
@@ -161,7 +161,7 @@ class WebSearchService:
                 "sort": "date"  # Sort by date for recent news
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=5)
             response.raise_for_status()
 
             data = response.json()

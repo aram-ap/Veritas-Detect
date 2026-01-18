@@ -119,7 +119,7 @@ class GeminiExplainer:
         Analyze the following text for misinformation, bias, and logical fallacies.
 
         Title: {title or 'No title'}
-        Text: {text[:15000]}  # Truncate if too long
+        Text: {text[:10000]}  # Truncate for faster processing
 
         Provide the output in strict JSON format with the following structure:
         {{

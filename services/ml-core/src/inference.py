@@ -454,16 +454,10 @@ def predict_full_analysis(
                             confidence = credibility_score
                         elif credibility_score < 0.2:
                             # If no trusted sources report a "breaking" event, it's likely unsubstantiated
-                            # Double check with a general search to see if it's just obscure
-                            general_results = web_search.search_for_verification(claim, num_results=3, recent_only=True)
-                            if not general_results:
-                                status = "Unsubstantiated"
-                                explanation = "No trusted sources are reporting this event."
-                                confidence = 0.9
-                            else:
-                                status = "Unsubstantiated"
-                                explanation = "Reported only by unverified sources; pending trusted confirmation."
-                                confidence = 0.6
+                            # Skip extra search for speed - low credibility is enough signal
+                            status = "Unsubstantiated"
+                            explanation = "No trusted sources are reporting this event."
+                            confidence = 0.8
                         else:
                             status = "Mixed"
                             explanation = "Mixed reporting or single source confirmation."
@@ -854,16 +848,10 @@ async def predict_full_analysis_streaming(
                             explanation = "Confirmed by multiple trusted news outlets."
                             confidence = credibility_score
                         elif credibility_score < 0.2:
-                            # Double check with general search
-                            general_results = web_search.search_for_verification(claim, num_results=3, recent_only=True)
-                            if not general_results:
-                                status = "Unsubstantiated"
-                                explanation = "No trusted sources are reporting this event."
-                                confidence = 0.9
-                            else:
-                                status = "Unsubstantiated"
-                                explanation = "Reported only by unverified sources; pending trusted confirmation."
-                                confidence = 0.6
+                            # Skip extra search for speed - low credibility is enough signal
+                            status = "Unsubstantiated"
+                            explanation = "No trusted sources are reporting this event."
+                            confidence = 0.8
                         else:
                             status = "Mixed"
                             explanation = "Mixed reporting or single source confirmation."
