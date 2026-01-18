@@ -1,38 +1,136 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <title>Generate Veritas Icons</title>
+  <style>
+    body {
+      padding: 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1e293b;
+      color: white;
+    }
+    .container {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 20px 0;
+    }
+    canvas {
+      border: 2px solid #475569;
+      border-radius: 8px;
+    }
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(to right, #6366f1, #9333ea);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+    }
+  </style>
+</head>
 <body>
-<canvas id="c16" width="16" height="16"></canvas>
-<canvas id="c48" width="48" height="48"></canvas>
-<canvas id="c128" width="128" height="128"></canvas>
-<script>
-['16','48','128'].forEach(size => {
-  const canvas = document.getElementById('c'+size);
-  const ctx = canvas.getContext('2d');
-  const s = parseInt(size);
-  // Draw gradient background
-  const gradient = ctx.createLinearGradient(0, 0, s, s);
-  gradient.addColorStop(0, '#6366f1');
-  gradient.addColorStop(1, '#a855f7');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, s, s);
-  // Draw checkmark
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = s/8;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(s*0.25, s*0.5);
-  ctx.lineTo(s*0.4, s*0.65);
-  ctx.lineTo(s*0.75, s*0.35);
-  ctx.stroke();
-  // Download
-  canvas.toBlob(blob => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'icon'+size+'.png';
-    a.click();
-  });
-});
-</script>
+  <h1>Veritas Icon Generator</h1>
+  <p>Using the exact same shield icon from the app</p>
+  <button onclick="generateIcons()">Generate All Icons</button>
+  <div class="container">
+    <div>
+      <div>16x16</div>
+      <canvas id="c16" width="16" height="16"></canvas>
+    </div>
+    <div>
+      <div>48x48</div>
+      <canvas id="c48" width="48" height="48"></canvas>
+    </div>
+    <div>
+      <div>128x128</div>
+      <canvas id="c128" width="128" height="128"></canvas>
+    </div>
+  </div>
+  <script>
+    // SVG path from the app (shield with checkmark)
+    const shieldPath = "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z";
+
+    function drawIconFromSVG(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      const s = size;
+      
+      // Create SVG with gradient background and icon
+      const svg = `
+        <svg width="${s}" height="${s}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#9333ea;stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <!-- Rounded rectangle background -->
+          <rect width="${s}" height="${s}" rx="${s * 0.2}" fill="url(#grad)"/>
+          <!-- Shield icon centered and scaled -->
+          <g transform="translate(${s/2}, ${s/2}) scale(${s/30})">
+            <g transform="translate(-12, -12)">
+              <path d="${shieldPath}" 
+                    fill="none" 
+                    stroke="white" 
+                    stroke-width="2" 
+                    stroke-linecap="round" 
+                    stroke-linejoin="round"/>
+            </g>
+          </g>
+        </svg>
+      `;
+      
+      // Convert SVG to image and draw on canvas
+      const img = new Image();
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      
+      return new Promise((resolve) => {
+        img.onload = () => {
+          ctx.clearRect(0, 0, s, s);
+          ctx.drawImage(img, 0, 0);
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        img.src = url;
+      });
+    }
+    
+    async function generateIcons() {
+      for (const size of ['16', '48', '128']) {
+        const canvas = document.getElementById('c' + size);
+        const s = parseInt(size);
+        
+        await drawIconFromSVG(canvas, s);
+        
+        // Download
+        canvas.toBlob(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'icon' + size + '.png';
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      }
+      alert('All icons generated and downloaded!');
+    }
+    
+    // Draw previews on load
+    (async () => {
+      for (const size of ['16', '48', '128']) {
+        const canvas = document.getElementById('c' + size);
+        await drawIconFromSVG(canvas, parseInt(size));
+      }
+    })();
+  </script>
 </body>
 </html>
