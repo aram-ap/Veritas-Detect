@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veritas Demo Pages - Test Your Extension</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 50px;
+        }
+        
+        h1 {
+            font-size: 48px;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .subtitle {
+            font-size: 20px;
+            opacity: 0.95;
+        }
+        
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        
+        .card-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .high-trust .card-icon {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+        
+        .low-trust .card-icon {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+        
+        .mixed-trust .card-icon {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+        
+        .card-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #1a1a1a;
+        }
+        
+        .card-description {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        
+        .card-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e5e5;
+        }
+        
+        .meta-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        
+        .meta-label {
+            color: #888;
+        }
+        
+        .meta-value {
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .score-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .high-score {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .low-score {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .medium-score {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        
+        .info-box {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .info-box h2 {
+            margin-bottom: 15px;
+            color: #1a1a1a;
+            font-size: 24px;
+        }
+        
+        .info-box ol {
+            margin-left: 20px;
+            color: #333;
+            line-height: 2;
+        }
+        
+        .info-box li {
+            margin-bottom: 10px;
+        }
+        
+        .warning {
+            background-color: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px 20px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+        
+        .warning strong {
+            color: #92400e;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎭 Veritas Demo Pages</h1>
+            <p class="subtitle">Test your extension with these fictional news articles</p>
+        </div>
+        
+        <div class="cards-grid">
+            <a href="high-trust.html" class="card high-trust">
+                <div class="card-icon">✓</div>
+                <div class="card-title">High Trust Article</div>
+                <div class="card-description">
+                    Well-sourced, balanced reporting about a fictional solar energy breakthrough. Features proper citations, neutral language, and factual claims.
+                </div>
+                <div class="card-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Expected Score:</span>
+                        <span class="meta-value"><span class="score-badge high-score">85-95</span></span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Bias:</span>
+                        <span class="meta-value">Neutral/Center</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Publication:</span>
+                        <span class="meta-value">The Tech Herald</span>
+                    </div>
+                </div>
+            </a>
+            
+            <a href="low-trust.html" class="card low-trust">
+                <div class="card-icon">⚠</div>
+                <div class="card-title">Low Trust Article</div>
+                <div class="card-description">
+                    Sensationalized piece with emotional language, unverified claims, and conspiracy undertones about fictional government surveillance.
+                </div>
+                <div class="card-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Expected Score:</span>
+                        <span class="meta-value"><span class="score-badge low-score">15-30</span></span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Bias:</span>
+                        <span class="meta-value">Right-leaning</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Publication:</span>
+                        <span class="meta-value">National Truth Network</span>
+                    </div>
+                </div>
+            </a>
+            
+            <a href="mixed-trust.html" class="card mixed-trust">
+                <div class="card-icon">~</div>
+                <div class="card-title">Mixed Trust Article</div>
+                <div class="card-description">
+                    Healthcare policy article with some factual content but also misleading statistics, opinion mixed with reporting, and partisan framing.
+                </div>
+                <div class="card-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Expected Score:</span>
+                        <span class="meta-value"><span class="score-badge medium-score">50-65</span></span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Bias:</span>
+                        <span class="meta-value">Left-leaning</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Publication:</span>
+                        <span class="meta-value">The Daily Observer</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        
+        <div class="info-box">
+            <h2>📋 How to Use These Demo Pages</h2>
+            
+            <div class="warning" style="background-color: #dbeafe; border-left-color: #3b82f6; margin-bottom: 20px;">
+                <strong>🔧 First Time Setup Required:</strong> To analyze local HTML files, you must enable file URL access in Chrome:
+                <ol style="margin: 10px 0 5px 20px; padding: 0;">
+                    <li>Go to <code>chrome://extensions/</code></li>
+                    <li>Find "Veritas: Misinformation Detector" → Click "Details"</li>
+                    <li>Enable "Allow access to file URLs" toggle</li>
+                </ol>
+                See <strong>FILE_URL_SETUP.md</strong> for detailed instructions.
+            </div>
+            
+            <h3 style="margin-top: 20px; font-size: 18px;">Testing Steps</h3>
+            <ol>
+                <li>Click on any card above to open the fictional news article</li>
+                <li>Once the page loads, click your Veritas extension icon in Chrome</li>
+                <li>Click "Scan for Misinformation" to analyze the article</li>
+                <li>Observe how the extension identifies different trust levels, bias, and flagged content</li>
+                <li>Take screenshots or record videos for your demo/presentation</li>
+            </ol>
+            
+            <div class="warning">
+                <strong>⚠️ Important:</strong> All content in these articles is completely fictional and created solely for demonstration purposes. Any resemblance to real persons, organizations, or events is purely coincidental. Each page includes a prominent disclaimer banner.
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Created for Veritas: Misinformation Detection Platform</p>
+            <p style="margin-top: 10px;">© 2026 - Demo Content Only</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Healthcare Reform Bill Promises Universal Coverage, Critics Question Cost - The Daily Observer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #fafafa;
+        }
+
+        .demo-banner {
+            background: linear-gradient(135deg, #ff0000, #cc0000);
+            color: white;
+            text-align: center;
+            padding: 15px;
+            font-weight: bold;
+            font-size: 18px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        header {
+            background-color: #2c5282;
+            color: white;
+            padding: 20px 0;
+            border-bottom: 4px solid #1a365d;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .site-name {
+            font-size: 40px;
+            font-weight: 700;
+            margin-bottom: 5px;
+            font-family: 'Times New Roman', serif;
+        }
+        
+        .tagline {
+            font-size: 14px;
+            color: #cbd5e0;
+        }
+        
+        nav {
+            background-color: #f7fafc;
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .nav-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            gap: 25px;
+        }
+        
+        nav a {
+            color: #2d3748;
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 500;
+        }
+        
+        nav a:hover {
+            color: #2c5282;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: white;
+            padding: 50px 60px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .article-category {
+            color: #2c5282;
+            text-transform: uppercase;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 1.5px;
+            margin-bottom: 15px;
+        }
+        
+        h1 {
+            font-size: 40px;
+            line-height: 1.2;
+            margin-bottom: 20px;
+            font-weight: 700;
+            color: #1a202c;
+        }
+        
+        .subtitle {
+            font-size: 20px;
+            color: #4a5568;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+        
+        .author-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 25px 0;
+            padding: 20px 0;
+            border-top: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .author-avatar {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2c5282 0%, #4299e1 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 22px;
+        }
+        
+        .author-info {
+            flex: 1;
+        }
+        
+        .author-name {
+            font-weight: 600;
+            color: #1a202c;
+            font-size: 16px;
+        }
+        
+        .publish-info {
+            color: #718096;
+            font-size: 14px;
+            margin-top: 3px;
+        }
+        
+        .article-image {
+            width: 100%;
+            height: 450px;
+            background: linear-gradient(135deg, #2c5282 0%, #4299e1 100%);
+            margin: 30px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .image-caption {
+            font-size: 14px;
+            color: #718096;
+            margin-top: -20px;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        
+        .content p {
+            margin-bottom: 20px;
+            font-size: 18px;
+            line-height: 1.8;
+            color: #2d3748;
+        }
+        
+        .content h2 {
+            font-size: 28px;
+            margin: 35px 0 20px 0;
+            color: #1a202c;
+            font-weight: 600;
+        }
+        
+        .quote-block {
+            background-color: #edf2f7;
+            border-left: 4px solid #2c5282;
+            padding: 25px 30px;
+            margin: 30px 0;
+            font-size: 19px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        
+        .quote-author {
+            margin-top: 12px;
+            font-size: 16px;
+            color: #4a5568;
+            font-weight: 500;
+        }
+        
+        .stat-highlight {
+            background-color: #bee3f8;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+            color: #2c5282;
+        }
+        
+        .fact-box {
+            background-color: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-left: 4px solid #38a169;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        
+        .fact-box-title {
+            font-weight: 700;
+            color: #22543d;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .fact-box-content {
+            color: #2f855a;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+        
+        .opinion-marker {
+            background-color: #fef5e7;
+            border-left: 4px solid #f6ad55;
+            padding: 15px 20px;
+            margin: 25px 0;
+            font-size: 15px;
+            color: #744210;
+        }
+        
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+        
+        .column-box {
+            background-color: #f7fafc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        
+        .column-box h3 {
+            color: #2c5282;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        .column-box ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .column-box li {
+            margin-bottom: 10px;
+            padding-left: 20px;
+            position: relative;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        
+        .column-box li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #2c5282;
+            font-weight: bold;
+        }
+        
+        .related-section {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e2e8f0;
+        }
+        
+        .related-section h3 {
+            margin-bottom: 20px;
+            color: #1a202c;
+            font-size: 22px;
+        }
+        
+        .related-article {
+            display: block;
+            padding: 18px;
+            margin-bottom: 12px;
+            background-color: #f7fafc;
+            text-decoration: none;
+            color: #2c5282;
+            border-left: 3px solid #2c5282;
+            transition: all 0.3s;
+        }
+        
+        .related-article:hover {
+            background-color: #edf2f7;
+            padding-left: 25px;
+        }
+        
+        footer {
+            background-color: #1a202c;
+            color: white;
+            text-align: center;
+            padding: 30px;
+            margin-top: 50px;
+        }
+        
+        .correction-note {
+            background-color: #fff5f5;
+            border-left: 4px solid #fc8181;
+            padding: 15px 20px;
+            margin: 25px 0;
+            font-size: 14px;
+            color: #742a2a;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-banner">
+        🎭 FICTIONAL DEMO CONTENT - NOT A REAL NEWS ARTICLE - FOR DEMONSTRATION PURPOSES ONLY 🎭
+    </div>
+
+    <header>
+        <div class="header-content">
+            <div class="site-name">The Daily Observer</div>
+            <div class="tagline">Independent News for Progressive Readers</div>
+        </div>
+    </header>
+    
+    <nav>
+        <div class="nav-content">
+            <a href="#">Politics</a>
+            <a href="#">Healthcare</a>
+            <a href="#">Economy</a>
+            <a href="#">Opinion</a>
+            <a href="#">Analysis</a>
+        </div>
+    </nav>
+    
+    <div class="container">
+        <div class="article-category">Healthcare Policy</div>
+        
+        <h1>New Healthcare Reform Bill Promises Universal Coverage, Critics Question Cost</h1>
+        
+        <div class="subtitle">
+            Fictional legislation aims to insure 25 million Americans, but debate intensifies over $2.5 trillion price tag and implementation timeline.
+        </div>
+        
+        <div class="author-section">
+            <div class="author-avatar">AJ</div>
+            <div class="author-info">
+                <div class="author-name">Alexandra Johnson</div>
+                <div class="publish-info">Published January 17, 2026 | 5 min read</div>
+            </div>
+        </div>
+        
+        <div class="article-image">
+            [Fictional Healthcare Legislation Signing]
+        </div>
+        <div class="image-caption">
+            Fictional Senator Maria Rodriguez speaks about the Healthcare Equity Act during a press conference on Capitol Hill. The legislation has sparked heated debate across party lines. (Photo: Daily Observer/Archive)
+        </div>
+        
+        <div class="content">
+            <p>
+                The fictional Healthcare Equity Act of 2026, introduced by Senator Maria Rodriguez (D-CA) last week, proposes the most comprehensive expansion of healthcare coverage in a generation, potentially providing insurance to <span class="stat-highlight">25 million currently uninsured Americans</span>.
+            </p>
+            
+            <p>
+                The bill, which has garnered support from progressive lawmakers and healthcare advocacy groups, would create a public option available to all Americans while maintaining existing private insurance markets. Supporters argue this represents a pragmatic middle ground in the ongoing healthcare debate.
+            </p>
+            
+            <div class="quote-block">
+                "Healthcare is a human right, not a privilege. This legislation ensures that no American has to choose between paying for medicine and paying rent."
+                <div class="quote-author">
+                    — Senator Maria Rodriguez (Fictional), primary sponsor of the Healthcare Equity Act
+                </div>
+            </div>
+            
+            <h2>Key Provisions</h2>
+            
+            <p>
+                The 847-page bill includes several major components designed to expand coverage while controlling costs. The centerpiece is a public insurance option administered by a new fictional Federal Health Insurance Office, which would negotiate drug prices directly with pharmaceutical companies.
+            </p>
+            
+            <div class="fact-box">
+                <div class="fact-box-title">Bill Highlights:</div>
+                <div class="fact-box-content">
+                    • Public option available with income-based premiums<br>
+                    • Federal negotiation of prescription drug prices<br>
+                    • Expansion of eligibility for subsidies<br>
+                    • $150 billion investment in community health centers<br>
+                    • Caps on out-of-pocket expenses at $5,000 per year
+                </div>
+            </div>
+            
+            <p>
+                According to analysis by the fictional Congressional Budget Office, the legislation would reduce the number of uninsured Americans by approximately 60% over the next decade. Proponents point to studies showing that <span class="stat-highlight">universal healthcare could save thousands of lives annually</span> by ensuring timely access to preventive care and treatment.
+            </p>
+            
+            <h2>Cost Concerns and Criticism</h2>
+            
+            <p>
+                However, the bill faces significant opposition, primarily centered on its projected cost. The fictional CBO estimates implementation would require <span class="stat-highlight">$2.5 trillion in federal spending</span> over ten years, though supporters note this represents only a fraction of what Americans currently spend on healthcare through private insurance and out-of-pocket costs.
+            </p>
+            
+            <p>
+                Critics, including most Republican lawmakers, argue the bill would lead to higher taxes, longer wait times, and reduced quality of care. Fictional Senator Thomas Bradford (R-TX) called the legislation "a government takeover of healthcare that would devastate the American economy."
+            </p>
+            
+            <div class="opinion-marker">
+                <strong>Analysis:</strong> While concerns about cost are legitimate, it's worth noting that the United States currently spends more per capita on healthcare than any other developed nation, yet ranks poorly on many health outcomes. The question isn't whether we can afford universal coverage, but whether we can afford not to act.
+            </div>
+            
+            <div class="quote-block">
+                "This bill would fundamentally undermine the private insurance market and lead to rationed care. We've seen this story before in other countries."
+                <div class="quote-author">
+                    — Senator Thomas Bradford (Fictional), ranking member of the fictional Health Committee
+                </div>
+            </div>
+            
+            <p>
+                Industry groups have also voiced concerns. The fictional American Insurance Association released a statement warning that the public option could "destabilize insurance markets and lead to higher premiums for those who choose to remain in private plans." However, these claims are disputed by healthcare economists who point to successful public-private healthcare models in several states.
+            </p>
+            
+            <h2>Who Benefits?</h2>
+            
+            <p>
+                The legislation would primarily benefit low-income and middle-class families currently priced out of the insurance market. According to fictional data, <span class="stat-highlight">a family of four earning $75,000 annually could save up to $8,000 per year</span> in healthcare costs under the plan.
+            </p>
+            
+            <div class="two-column">
+                <div class="column-box">
+                    <h3>Supporters Say:</h3>
+                    <ul>
+                        <li>Closes coverage gaps for millions</li>
+                        <li>Reduces overall healthcare spending</li>
+                        <li>Improves health outcomes</li>
+                        <li>Gives workers more job mobility</li>
+                        <li>Addresses health disparities</li>
+                    </ul>
+                </div>
+                <div class="column-box">
+                    <h3>Critics Worry:</h3>
+                    <ul>
+                        <li>Significant tax increases needed</li>
+                        <li>Potential for longer wait times</li>
+                        <li>Reduced innovation in healthcare</li>
+                        <li>Disruption to existing coverage</li>
+                        <li>Implementation challenges</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <p>
+                Small business owners have expressed mixed reactions. While some welcome the reduction in the burden of providing employee health insurance, others worry about potential tax increases to fund the program. The fictional National Federation of Independent Business has not yet taken an official position on the legislation.
+            </p>
+            
+            <h2>Political Landscape</h2>
+            
+            <p>
+                The bill faces an uphill battle in Congress. While it has strong support among progressive Democrats, moderate members of the party remain cautious about the political implications of such sweeping reform. Senator Rodriguez needs at least 12 more votes in the Senate to ensure passage, assuming full Democratic support.
+            </p>
+            
+            <p>
+                Some political analysts suggest the bill represents an opening negotiating position, with compromises likely during the committee process. Potential modifications could include a slower implementation timeline or means-testing for public option eligibility.
+            </p>
+            
+            <div class="quote-block">
+                "This is about priorities. We can afford trillion-dollar tax cuts for corporations, but somehow we can't afford healthcare for working families? That math doesn't add up."
+                <div class="quote-author">
+                    — Rep. David Chen (Fictional, D-WA), co-sponsor of companion House legislation
+                </div>
+            </div>
+            
+            <p>
+                Healthcare advocacy groups have launched grassroots campaigns to build public support for the legislation. The fictional Healthcare For All Coalition organized rallies in 50 cities last weekend, drawing what organizers claimed were <span class="stat-highlight">over 500,000 participants nationwide</span>, though those numbers have not been independently verified.
+            </p>
+            
+            <h2>What Happens Next</h2>
+            
+            <p>
+                The bill is currently in the fictional Senate Health, Education, Labor, and Pensions Committee, where hearings are scheduled to begin next month. Committee Chair Senator Patricia Williams (D-MA) has indicated she expects the process to take at least three months, with amendments likely.
+            </p>
+            
+            <p>
+                If the bill passes committee review, it would move to the full Senate for debate and voting. Senate Majority Leader (fictional) has not committed to a timeline but acknowledged that healthcare remains "a top priority" for the Democratic caucus.
+            </p>
+            
+            <div class="correction-note">
+                <strong>Correction (Jan 17, 3:30 PM):</strong> An earlier version of this article stated the bill would cost $2.5 billion over ten years. The correct figure is $2.5 trillion. We regret the error.
+            </div>
+            
+            <p>
+                Public opinion polls show Americans remain divided on healthcare reform, with support varying significantly based on how questions are framed. A fictional poll by the National Opinion Research Center found that while 68% of Americans support "expanding access to affordable healthcare," only 45% support "government-run healthcare programs."
+            </p>
+            
+            <p>
+                As the debate continues, one thing remains clear: healthcare reform continues to be one of the most politically charged and consequential policy discussions in American politics, with implications that extend far beyond Washington.
+            </p>
+        </div>
+        
+        <div class="related-section">
+            <h3>Related Coverage</h3>
+            <a href="#" class="related-article">How the Healthcare Equity Act Compares to Previous Reform Efforts</a>
+            <a href="#" class="related-article">What Universal Healthcare Looks Like in Other Countries</a>
+            <a href="#" class="related-article">Opinion: Why Progressive Healthcare Reform Can't Wait</a>
+        </div>
+    </div>
+    
+    <footer>
+        <p>&copy; 2026 The Daily Observer (Fictional). All rights reserved.</p>
+        <p style="margin-top: 10px; font-size: 12px; color: #888;">
+            This is a completely fictional news article created for demonstration purposes only.
+            <br>All people, organizations, legislation, and statistics mentioned are entirely made up.
+        </p>
+    </footer>
+</body>
+</html>

@@ -23,12 +23,11 @@ type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
 const isSpecialPage = (url: string): boolean => {
   if (!url) return true;
   
-  // Chrome internal pages
+  // Chrome internal pages (but NOT file:// URLs - those are allowed!)
   if (url.startsWith('chrome://') || 
       url.startsWith('chrome-extension://') ||
       url.startsWith('edge://') ||
-      url.startsWith('about:') ||
-      url.startsWith('file://')) {
+      url.startsWith('about:')) {
     return true;
   }
   
