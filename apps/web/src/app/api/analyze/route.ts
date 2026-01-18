@@ -57,6 +57,7 @@ export async function POST(req: Request) {
     const score = data.score ?? data.trust_score ?? 50;
     const flaggedSnippets = data.flagged_snippets || [];
     const hasMisinformation = score < 70 || flaggedSnippets.length > 0;
+    const bias = data.bias || 'unknown';
     
     // Extract unique tags from flagged snippets
     const tags = new Set<string>();
@@ -102,6 +103,7 @@ export async function POST(req: Request) {
               trustScore: score,
               hasMisinformation,
               flaggedTags: JSON.stringify(Array.from(tags)),
+              bias: bias,
               analyzedAt: new Date(), // Update timestamp
             }
           });
@@ -115,6 +117,7 @@ export async function POST(req: Request) {
               trustScore: score,
               hasMisinformation,
               flaggedTags: JSON.stringify(Array.from(tags)),
+              bias: bias,
             }
           });
         }
@@ -128,6 +131,7 @@ export async function POST(req: Request) {
             trustScore: score,
             hasMisinformation,
             flaggedTags: JSON.stringify(Array.from(tags)),
+            bias: bias,
           }
         });
       }

@@ -49,6 +49,7 @@ export async function GET() {
           url: true,
           trustScore: true,
           hasMisinformation: true,
+          bias: true,
           analyzedAt: true,
         }
       })
@@ -56,13 +57,15 @@ export async function GET() {
 
     // Calculate statistics
     const totalAnalyses = allAnalyses.length;
-    const misinformationDetected = allAnalyses.filter(a => a.hasMisinformation).length;
-
-    // Aggregate tag frequencies
+    
+    // Count total flagged tags across all analyses
+    let totalMisinformationCount = 0;
     const tagFrequencies: Record<string, number> = {};
+    
     allAnalyses.forEach(analysis => {
       try {
         const tags = JSON.parse(analysis.flaggedTags) as string[];
+        totalMisinformationCount += tags.length; // Count each flagged tag
         tags.forEach(tag => {
           tagFrequencies[tag] = (tagFrequencies[tag] || 0) + 1;
         });
@@ -78,13 +81,14 @@ export async function GET() {
       url: a.url,
       trustScore: a.trustScore,
       hasMisinformation: a.hasMisinformation,
+      bias: a.bias || 'unknown',
       analyzedAt: a.analyzedAt.toISOString(),
     }));
 
     return NextResponse.json({
       joinedAt: userProfile.joinedAt.toISOString(),
       totalAnalyses,
-      misinformationDetected,
+      misinformationDetected: totalMisinformationCount,
       tagFrequencies,
       recentAnalyses
     });

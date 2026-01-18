@@ -16,6 +16,7 @@ interface UserStats {
     url: string | null;
     trustScore: number;
     hasMisinformation: boolean;
+    bias: string;
     analyzedAt: string;
   }>;
 }
@@ -260,49 +261,69 @@ export default function Dashboard() {
                 </button>
               </div>
               <div className="space-y-4">
-                {stats.recentAnalyses.map((analysis) => (
-                  <div 
-                    key={analysis.id}
-                    className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/30"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="text-white font-medium mb-1">
-                          {analysis.title || 'Untitled Article'}
-                        </h3>
-                        {analysis.url && (
-                          <a 
-                            href={analysis.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-indigo-400 hover:text-indigo-300 truncate block"
-                          >
-                            {analysis.url}
-                          </a>
-                        )}
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(analysis.analyzedAt).toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <div className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                          analysis.trustScore >= 70 
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : analysis.trustScore >= 50
-                            ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-                            : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                        }`}>
-                          Score: {analysis.trustScore.toFixed(0)}
+                {stats.recentAnalyses.map((analysis) => {
+                  // Determine bias badge styling
+                  const getBiasBadge = (bias: string) => {
+                    const biasLower = bias.toLowerCase();
+                    if (biasLower === 'left') {
+                      return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
+                    } else if (biasLower === 'right') {
+                      return 'bg-red-500/10 text-red-400 border border-red-500/20';
+                    } else if (biasLower === 'center') {
+                      return 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
+                    } else {
+                      return 'bg-gray-500/10 text-gray-400 border border-gray-500/20';
+                    }
+                  };
+
+                  return (
+                    <div 
+                      key={analysis.id}
+                      className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/30"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-white font-medium mb-1">
+                            {analysis.title || 'Untitled Article'}
+                          </h3>
+                          {analysis.url && (
+                            <a 
+                              href={analysis.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-indigo-400 hover:text-indigo-300 block overflow-hidden text-ellipsis whitespace-nowrap"
+                              title={analysis.url}
+                            >
+                              {analysis.url}
+                            </a>
+                          )}
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(analysis.analyzedAt).toLocaleString()}
+                          </p>
                         </div>
-                        {analysis.hasMisinformation && (
-                          <span className="text-xs text-red-400">
-                            ⚠️ Misinformation
-                          </span>
-                        )}
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          <div className={`px-3 py-1 rounded-lg text-sm font-medium whitespace-nowrap ${
+                            analysis.trustScore >= 70 
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : analysis.trustScore >= 50
+                              ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                              : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                          }`}>
+                            Score: {analysis.trustScore.toFixed(0)}
+                          </div>
+                          <div className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${getBiasBadge(analysis.bias)}`}>
+                            {analysis.bias.charAt(0).toUpperCase() + analysis.bias.slice(1)}
+                          </div>
+                          {analysis.hasMisinformation && (
+                            <span className="text-xs text-red-400 whitespace-nowrap">
+                              ⚠️ Misinformation
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

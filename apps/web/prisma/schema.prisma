@@ -29,6 +29,7 @@ model AnalysisRecord {
   trustScore            Float
   hasMisinformation     Boolean
   flaggedTags           String   // JSON string array of tags
+  bias                  String?  // Political bias: left, center, right, unknown
   analyzedAt            DateTime @default(now())
 
   user UserProfile @relation(fields: [userId], references: [id])
