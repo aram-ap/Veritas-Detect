@@ -1,4 +1,4 @@
-import { useState, forwardRef } from 'react';
+import { useState, useEffect, forwardRef } from 'react';
 
 export interface FlaggedSnippet {
   text: string;
@@ -28,6 +28,13 @@ interface FlaggedContentProps {
 
 export const FlaggedContent = ({ snippets, snippetRefs, selectedSnippetIndex, onSnippetSelect }: FlaggedContentProps) => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  // Auto-expand when snippet is selected
+  useEffect(() => {
+    if (selectedSnippetIndex !== null && selectedSnippetIndex !== undefined) {
+      setExpandedIndex(selectedSnippetIndex);
+    }
+  }, [selectedSnippetIndex]);
 
   if (!snippets || snippets.length === 0) {
     return (

@@ -26,6 +26,7 @@ function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
+  const [resultUrl, setResultUrl] = useState<string>(''); // Track which URL the current result is for
   const [selectedSnippetIndex, setSelectedSnippetIndex] = useState<number | null>(null);
   const snippetRefs = useRef<(HTMLDivElement | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -241,6 +242,7 @@ function App() {
     chrome.tabs.create({ url: API_ENDPOINTS.AUTH_LOGOUT });
     setAuthState('unauthenticated');
     setResult(null);
+    setResultUrl('');
   };
 
   const handleClearSiteData = async () => {
@@ -291,6 +293,7 @@ function App() {
 
       // 4. Reset UI state
       setResult(null);
+      setResultUrl('');
       setError(null);
       setSelectedSnippetIndex(null);
 
@@ -459,6 +462,7 @@ function App() {
 
         // Set the result directly
         setResult(analysisResult);
+        setResultUrl(tab.url || '');
 
         console.log('[Veritas] Non-streaming result state updated');
 
@@ -557,8 +561,38 @@ function App() {
 
       // Check if we got a final result
       if (!finalResult) {
-        console.error('[Veritas] No result received from stream - backend may not support streaming');
-        throw new Error('No result received from stream. The backend streaming endpoint may not be configured.');
+        console.warn('[Veritas] No result received from stream - falling back to non-streaming endpoint');
+
+        // Fallback to non-streaming endpoint
+        const fallbackRes = await fetch(API_ENDPOINTS.ANALYZE, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            text: response.text,
+            title: response.title,
+            url: tab.url,
+            forceRefresh
+          }),
+          signal: abortController.signal,
+        });
+
+        if (!fallbackRes.ok) {
+          if (fallbackRes.status === 401) {
+            throw new Error('Session expired. Please sign in again.');
+          }
+          if (fallbackRes.status === 429) {
+            const errorData = await fallbackRes.json();
+            throw new Error(errorData.message || 'Daily limit reached');
+          }
+          throw new Error('Analysis failed');
+        }
+
+        const fallbackData = await fallbackRes.json();
+        finalResult = fallbackData as AnalysisResult;
+        console.log('[Veritas] Fallback result received:', finalResult);
       }
 
       console.log('[Veritas] Setting final result:', finalResult);
@@ -568,6 +602,7 @@ function App() {
 
       // Set the final result (this must happen BEFORE the finally block)
       setResult(analysisResult);
+      setResultUrl(tab.url || '');
 
       console.log('[Veritas] Result state updated');
 
@@ -653,6 +688,7 @@ function App() {
         const cachedResult = items[currentUrl] as AnalysisResult;
 
         setResult(cachedResult);
+        setResultUrl(currentUrl);
         setError(null);
 
         // Send highlights for cached results (non-blocking)
@@ -674,19 +710,24 @@ function App() {
         }
       } else {
         console.log('[Veritas] No cached result for', currentUrl);
-        // Only clear results if we don't have any (URL changed to a new page)
-        // Don't clear if we have a result - user might have just completed an analysis
-        setResult((prevResult) => {
-          if (prevResult) {
-            console.log('[Veritas] Keeping existing result, not clearing from cache miss');
-            return prevResult;
-          }
-          return null;
-        });
-        setError(null);
+
+        // If URL changed to a different page, clear the old results
+        if (resultUrl && resultUrl !== currentUrl) {
+          console.log('[Veritas] URL changed from', resultUrl, 'to', currentUrl, '- clearing old results');
+          setResult(null);
+          setResultUrl('');
+          setError(null);
+        } else if (!resultUrl) {
+          // No previous result, safe to clear
+          setResult(null);
+          setError(null);
+        } else {
+          // Result is for current URL, keep it (handles race condition during save)
+          console.log('[Veritas] Keeping result for current URL (cache write may be in progress)');
+        }
       }
     });
-  }, [currentUrl]);
+  }, [currentUrl, resultUrl]);
 
   const getBiasStyle = (bias: string) => {
     const lowerBias = (bias || '').toLowerCase();

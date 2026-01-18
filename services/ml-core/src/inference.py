@@ -418,6 +418,14 @@ def predict_full_analysis(
         fact_checked_claims = []
         verifiable_claims = gemini_result.get('verifiable_claims', [])
 
+        logger.info(f"=" * 70)
+        logger.info(f"SOURCES DEBUG: Gemini returned {len(verifiable_claims)} verifiable claims")
+        if verifiable_claims:
+            logger.info(f"SOURCES DEBUG: Claims to verify: {verifiable_claims}")
+        else:
+            logger.warning(f"SOURCES DEBUG: No verifiable claims found! Sources cannot be added.")
+            logger.warning(f"SOURCES DEBUG: Gemini result keys: {gemini_result.keys()}")
+
         if verifiable_claims:
             logger.info(f"Found {len(verifiable_claims)} verifiable claims, starting hybrid verification...")
             try:
@@ -490,7 +498,9 @@ def predict_full_analysis(
                 logger.error(f"Hybrid verification failed: {e}")
 
         # 3. Propagate sources from fact_checked_claims to relevant flagged snippets
-        logger.info(f"Propagating sources from {len(fact_checked_claims)} fact-checked claims to snippets...")
+        logger.info(f"=" * 70)
+        logger.info(f"SOURCES DEBUG: Propagating sources from {len(fact_checked_claims)} fact-checked claims to snippets...")
+        logger.info(f"SOURCES DEBUG: Number of flagged snippets: {len(gemini_result.get('flagged_snippets', []))}")
         flagged_snippets = gemini_result.get('flagged_snippets', [])
 
         for claim_result in fact_checked_claims:
@@ -511,11 +521,16 @@ def predict_full_analysis(
 
                     if claim_text in snippet_text or snippet_text in claim_text or overlap_ratio > 0.3:
                         # Add sources to this snippet
+                        logger.info(f"SOURCES DEBUG: Match found! Claim overlaps with snippet (ratio: {overlap_ratio:.2f})")
+                        logger.info(f"SOURCES DEBUG: Claim: {claim_text[:80]}...")
+                        logger.info(f"SOURCES DEBUG: Snippet: {snippet_text[:80]}...")
+
                         if 'sources' not in snippet or not snippet['sources']:
                             snippet['sources'] = []
 
                         # Add fact-check sources (avoid duplicates)
                         existing_urls = {s.get('url') for s in snippet['sources'] if isinstance(s, dict)}
+                        sources_added = 0
 
                         for source in claim_result['sources']:
                             if isinstance(source, str):
@@ -529,13 +544,17 @@ def predict_full_analysis(
                                         'is_credible': True
                                     })
                                     existing_urls.add(source_url)
+                                    sources_added += 1
                             elif isinstance(source, dict):
                                 source_url = source.get('url')
                                 if source_url and source_url not in existing_urls:
                                     snippet['sources'].append(source)
                                     existing_urls.add(source_url)
+                                    sources_added += 1
 
-                        logger.info(f"Added {len(claim_result['sources'])} sources to snippet: {snippet_text[:50]}...")
+                        logger.info(f"SOURCES DEBUG: Added {sources_added} sources to snippet: {snippet_text[:50]}...")
+                    else:
+                        logger.debug(f"SOURCES DEBUG: No match (overlap: {overlap_ratio:.2f}). Claim: {claim_text[:50]}, Snippet: {snippet_text[:50]}")
 
         # 4. Validate flagged snippets to ensure negative assertions have sources
         logger.info("Validating flagged snippets for negative assertions...")
@@ -573,6 +592,15 @@ def predict_full_analysis(
         flagged_snippets = result.get('flagged_snippets', [])
         flagged_snippets.sort(key=lambda s: s.get('index', [float('inf')])[0] if s.get('index') else float('inf'))
         result['flagged_snippets'] = flagged_snippets
+
+        # Log final source statistics
+        logger.info(f"=" * 70)
+        snippets_with_sources = sum(1 for s in flagged_snippets if s.get('sources') and len(s['sources']) > 0)
+        logger.info(f"SOURCES DEBUG: FINAL RESULT - {snippets_with_sources}/{len(flagged_snippets)} snippets have sources")
+        for idx, snippet in enumerate(flagged_snippets):
+            sources_count = len(snippet.get('sources', []))
+            logger.info(f"SOURCES DEBUG: Snippet {idx+1}: '{snippet.get('text', '')[:60]}...' has {sources_count} sources")
+        logger.info(f"=" * 70)
         
         # 5. Pipeline Aggregation Logic (Refine Trust Score based on verification)
         # Differentiate between direct misinformation (harsh) and unsubstantiated claims (warnings)
@@ -796,6 +824,13 @@ async def predict_full_analysis_streaming(
         # Hybrid Fact-Checking Pipeline
         fact_checked_claims = []
         verifiable_claims = gemini_result.get('verifiable_claims', [])
+
+        logger.info(f"=" * 70)
+        logger.info(f"SOURCES DEBUG (STREAMING): Gemini returned {len(verifiable_claims)} verifiable claims")
+        if verifiable_claims:
+            logger.info(f"SOURCES DEBUG (STREAMING): Claims to verify: {verifiable_claims}")
+        else:
+            logger.warning(f"SOURCES DEBUG (STREAMING): No verifiable claims found! Sources cannot be added.")
 
         if verifiable_claims:
             yield f"data: {json.dumps({'type': 'status', 'message': f'Verifying {len(verifiable_claims)} claims (Hybrid Mode)...', 'progress': 80})}\n\n"

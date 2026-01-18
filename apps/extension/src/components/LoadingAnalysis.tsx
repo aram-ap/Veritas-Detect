@@ -17,6 +17,38 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 /**
+ * Wave text component that animates each character with a staggered wave effect
+ */
+const WaveText = ({ text, className = '' }: { text: string; className?: string }) => {
+  const words = text.split(' ');
+
+  return (
+    <span className={className}>
+      {words.map((word, wordIdx) => (
+        <span key={wordIdx}>
+          {word.split('').map((char, charIdx) => {
+            const globalCharIndex = words.slice(0, wordIdx).join('').length + wordIdx + charIdx;
+            return (
+              <span
+                key={charIdx}
+                style={{
+                  display: 'inline-block',
+                  animation: 'char-wave 2s ease-in-out infinite',
+                  animationDelay: `${globalCharIndex * 0.05}s`,
+                }}
+              >
+                {char}
+              </span>
+            );
+          })}
+          {wordIdx < words.length - 1 && '\u00A0'}
+        </span>
+      ))}
+    </span>
+  );
+};
+
+/**
  * Streaming loading component with detailed progress indication
  */
 export const LoadingAnalysis = ({
@@ -141,7 +173,9 @@ export const LoadingAnalysis = ({
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Activity</p>
           <div className="space-y-2">
             {displayedMessages.length === 0 ? (
-              <div className="text-sm text-gray-400 italic">Initializing analysis...</div>
+              <div className="text-sm text-gray-400 italic">
+                <WaveText text="Initializing analysis..." />
+              </div>
             ) : (
               displayedMessages.map((message, idx) => (
                 <div
@@ -162,20 +196,24 @@ export const LoadingAnalysis = ({
                       clipRule="evenodd"
                     />
                   </svg>
-                  <span className="flex-1">{message}</span>
+                  <span className="flex-1">
+                    <WaveText text={message} />
+                  </span>
                 </div>
               ))
             )}
           </div>
           {streamingSnippets.length > 0 && (
             <div className="mt-3 pt-3 border-t border-slate-700/50">
-              <p className="text-xs text-amber-400">
+              <p className="text-xs text-amber-400 animate-text-wave">
                 {streamingSnippets.length} {streamingSnippets.length === 1 ? 'issue' : 'issues'} detected
               </p>
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-500 text-center mt-2">This may take a moment...</p>
+        <p className="text-xs text-gray-500 text-center mt-2">
+          <WaveText text="This may take a moment..." />
+        </p>
       </div>
 
       {/* Cancel Button */}
@@ -212,12 +250,47 @@ style.textContent = `
     }
   }
 
+  @keyframes text-wave {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  @keyframes text-wave-slow {
+    0%, 100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 0.2;
+    }
+  }
+
+  @keyframes char-wave {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
   .animate-slide-in-left {
     animation: slide-in-left 0.4s ease-out forwards;
   }
 
   .animate-spin-slow {
     animation: spin-slow 8s linear infinite;
+  }
+
+  .animate-text-wave {
+    animation: text-wave 2s ease-in-out infinite;
+  }
+
+  .animate-text-wave-slow {
+    animation: text-wave-slow 3s ease-in-out infinite;
   }
 `;
 document.head.appendChild(style);
