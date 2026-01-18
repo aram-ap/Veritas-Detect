@@ -79,6 +79,18 @@ export async function POST(req: Request) {
         expiresAt: expiresAt.toISOString(),
       });
     } else if (normalizedCode === 'yoitsaram') {
+      // Check how many users already have unlimited tier
+      const unlimitedCount = await prisma.userProfile.count({
+        where: { subscriptionTier: 'unlimited' }
+      });
+
+      if (unlimitedCount >= 3) {
+        return NextResponse.json(
+          { error: 'This coupon has reached its maximum usage limit' },
+          { status: 400 }
+        );
+      }
+
       // Special unlimited access
       await prisma.userProfile.update({
         where: { id: userProfile.id },

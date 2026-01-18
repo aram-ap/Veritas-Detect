@@ -292,6 +292,15 @@ function App() {
     }
   };
 
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setAnalyzing(false);
+    console.log('[Veritas] User cancelled analysis');
+  };
+
   const handleAnalyze = async (forceRefresh = true) => {
     // Cancel any ongoing analysis
     if (abortControllerRef.current) {
@@ -626,6 +635,12 @@ function App() {
               <p className="text-white font-medium animate-pulse">Analyzing Content</p>
               <p className="text-sm text-gray-400 mt-1">Checking for misinformation...</p>
             </div>
+            <button
+              onClick={handleCancel}
+              className="mt-4 px-4 py-2 text-sm font-medium text-white bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         )}
 

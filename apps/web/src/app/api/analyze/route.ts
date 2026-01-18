@@ -92,14 +92,6 @@ export async function POST(req: Request) {
           { status: 429 }
         );
       }
-
-      // Increment usage counter
-      userProfile = await prisma.userProfile.update({
-        where: { id: userProfile.id },
-        data: {
-          todayAnalysisCount: userProfile.todayAnalysisCount + 1,
-        }
-      });
     }
 
     const backendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
@@ -129,6 +121,27 @@ export async function POST(req: Request) {
 
     const data = await response.json();
     console.log('[Next.js] Python response data:', JSON.stringify(data).substring(0, 200) + '...');
+
+    // Check if request was aborted by client before incrementing usage
+    if (req.signal.aborted) {
+      console.log('Request aborted by client, skipping usage increment');
+      return new NextResponse(null, { status: 499 });
+    }
+
+    // Successfully analyzed, now increment usage if not unlimited
+    if (!isUnlimitedUser) {
+      try {
+        await prisma.userProfile.update({
+          where: { id: userProfile.id },
+          data: {
+            todayAnalysisCount: { increment: 1 },
+          }
+        });
+      } catch (incError) {
+        console.error('Failed to increment usage count:', incError);
+        // Continue anyway since the user got their result
+      }
+    }
 
     const score = data.score ?? data.trust_score ?? 50;
     const flaggedSnippets = data.flagged_snippets || [];
@@ -209,7 +222,11 @@ export async function POST(req: Request) {
       summary: data.explanation?.summary || data.summary || undefined,
       metadata: data.metadata || undefined
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === 'AbortError' || req.signal.aborted) {
+      console.log('Analysis request cancelled by client');
+      return new NextResponse(null, { status: 499 });
+    }
     console.error('Analyze error:', error);
     return NextResponse.json(
       { error: 'Internal Server Error' },
