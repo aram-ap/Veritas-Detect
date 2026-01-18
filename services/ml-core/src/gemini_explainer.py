@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import re
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime
 try:
     from google import genai
@@ -129,7 +129,7 @@ class GeminiExplainer:
             "summary": <string, concise explanation>,
             "flagged_snippets": [
                 {{
-                    "text": <exact substring from text>,
+                    "text": <EXACT substring from text - preserve original capitalization, punctuation, and spacing>,
                     "type": <"Misinformation", "Disinformation", "Propaganda", "Logical Fallacy", "Quoted Misinformation", "Quoted Disinformation", "Quoted Propaganda", "Quoted Fallacy">,
                     "reason": <concise explanation>,
                     "severity": <"low", "medium", "high">,
@@ -261,18 +261,30 @@ class GeminiExplainer:
 
             result = json.loads(json_str)
             
-            # Post-processing to ensure snippets match exact text
+            # Post-processing to ensure snippets match exact text (case-insensitive + fuzzy)
             for snippet in result.get("flagged_snippets", []):
                 snippet_text = snippet["text"]
-                # Find indices
-                start = text.find(snippet_text)
+                
+                # Try case-insensitive search first
+                start = self._find_case_insensitive(text, snippet_text)
+                
                 if start != -1:
+                    # Found it! Extract the actual text with correct case from original
+                    actual_text = text[start:start + len(snippet_text)]
+                    snippet["text"] = actual_text  # Update with correct case
                     snippet["index"] = [start, start + len(snippet_text)]
                 else:
-                    # Fuzzy match or fallback? 
-                    # For now, if exact match fails, we might miss the highlight or need fuzzy search.
-                    # We'll set index to None and let UI handle it (maybe just show the box without highlight).
-                    snippet["index"] = None
+                    # Try fuzzy match for snippets with minor differences (spaces, punctuation)
+                    start, actual_text = self._fuzzy_find(text, snippet_text)
+                    if start != -1:
+                        snippet["text"] = actual_text
+                        snippet["index"] = [start, start + len(actual_text)]
+                    else:
+                        # No match found - set index to None
+                        snippet["index"] = None
+                        logger.warning(f"Could not find snippet in text: '{snippet_text[:50]}...'")
+            
+            return result
                     
             return result
         except Exception as e:
@@ -280,6 +292,63 @@ class GeminiExplainer:
             print(f"DEBUG: Gemini analysis failed with error: {e}")
             return self._get_fallback_response()
 
+    def _find_case_insensitive(self, text: str, snippet: str) -> int:
+        """
+        Find the position of snippet in text using case-insensitive search.
+        
+        Args:
+            text: The full article text
+            snippet: The snippet to find
+            
+        Returns:
+            Start index of the match, or -1 if not found
+        """
+        text_lower = text.lower()
+        snippet_lower = snippet.lower()
+        return text_lower.find(snippet_lower)
+    
+    def _fuzzy_find(self, text: str, snippet: str) -> Tuple[int, str]:
+        """
+        Try to find snippet in text with fuzzy matching (handles minor differences).
+        
+        This handles cases where AI returns text with:
+        - Slightly different whitespace
+        - Missing or extra punctuation
+        - Minor word variations
+        
+        Args:
+            text: The full article text
+            snippet: The snippet to find
+            
+        Returns:
+            Tuple of (start_index, actual_matched_text) or (-1, "") if not found
+        """
+        # Normalize both strings (remove extra spaces, normalize punctuation)
+        import unicodedata
+        
+        def normalize(s):
+            # Remove extra whitespace
+            s = ' '.join(s.split())
+            # Remove some punctuation that might differ
+            s = s.replace('"', '"').replace('"', '"').replace(''', "'").replace(''', "'")
+            return s.lower()
+        
+        normalized_snippet = normalize(snippet)
+        
+        # Try to find a substring that matches
+        # Use sliding window approach with normalized comparison
+        snippet_len = len(snippet)
+        
+        # Try different window sizes (snippet length +/- 20%)
+        for window_size in range(int(snippet_len * 0.8), int(snippet_len * 1.2) + 1):
+            for i in range(len(text) - window_size + 1):
+                window = text[i:i + window_size]
+                if normalize(window) == normalized_snippet:
+                    return i, window
+        
+        # No fuzzy match found
+        return -1, ""
+    
     def _get_fallback_response(self) -> Dict[str, Any]:
         return {
             "trust_score": 50,
