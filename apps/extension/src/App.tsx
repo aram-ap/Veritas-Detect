@@ -28,6 +28,7 @@ function App() {
   const snippetRefs = useRef<(HTMLDivElement | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [clearingData, setClearingData] = useState(false);
+  const [usage, setUsage] = useState<{ used: number; limit: number; tier: string; isUnlimited: boolean } | null>(null);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -60,6 +61,9 @@ function App() {
 
         setAuthState('authenticated');
         setUserName(data.user.name || data.user.nickname || data.user.email || 'User');
+        if (data.usage) {
+          setUsage(data.usage);
+        }
       } else {
         console.log('[Veritas] Not authenticated');
         setAuthState('unauthenticated');
@@ -555,7 +559,7 @@ function App() {
   return (
     <div className="w-full h-full bg-gradient-to-b from-slate-900 to-slate-950 p-5 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between mb-5">
+      <header className="flex items-center justify-between mb-2">
         <button
           onClick={() => chrome.tabs.create({ url: API_BASE_URL })}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
@@ -565,7 +569,17 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
           </div>
-          <span className="text-white font-semibold">Veritas</span>
+          <div className="flex flex-col items-start">
+            <span className="text-white font-semibold leading-tight">Veritas</span>
+            {usage && !usage.isUnlimited && (
+              <span className="text-[10px] text-gray-400">
+                {Math.max(0, usage.limit - usage.used)} / {usage.limit} scans left
+              </span>
+            )}
+            {usage && usage.isUnlimited && (
+              <span className="text-[10px] text-emerald-400">Unlimited</span>
+            )}
+          </div>
         </button>
         <div className="flex items-center gap-2">
           <button
@@ -607,20 +621,13 @@ function App() {
       <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {!result && !analyzing && (
           <div className="flex-1 flex flex-col items-center justify-center">
-            <button
-              onClick={() => handleAnalyze(true)}
-              disabled={analyzing}
-              className="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <span>Scan for Misinformation</span>
-              </div>
-            </button>
-            <p className="text-xs text-gray-500 mt-4 text-center">
-              Click to analyze the current page for potential misinformation and bias
+            <div className="w-24 h-24 mb-6 rounded-full bg-slate-800/50 flex items-center justify-center border-4 border-slate-700/30">
+              <svg className="w-10 h-10 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-400 text-center max-w-[80%]">
+              Ready to analyze this page for misinformation and bias.
             </p>
           </div>
         )}
@@ -698,19 +705,18 @@ function App() {
         )}
       </div>
 
-      {/* Rescan button - Always visible at bottom */}
-      {(result || error) && (
+      {/* Action Button - Always visible at bottom when not analyzing */}
+      {!analyzing && (
         <div className="flex-shrink-0 mt-4 p-4 border-t border-slate-700/50 bg-slate-900/50">
           <button
-            onClick={() => handleAnalyze(true)} // Pass true for forceRefresh to bypass cache
-            disabled={analyzing}
-            className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => handleAnalyze(true)}
+            className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98]"
           >
             <div className="flex items-center justify-center gap-2">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={result || error ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" : "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"} />
               </svg>
-              <span>Rescan Page</span>
+              <span>{result || error ? 'Rescan Page' : 'Scan for Misinformation'}</span>
             </div>
           </button>
         </div>
