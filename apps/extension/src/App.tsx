@@ -710,14 +710,21 @@ function App() {
         <div className="flex-shrink-0 mt-4 p-4 border-t border-slate-700/50 bg-slate-900/50">
           <button
             onClick={() => handleAnalyze(true)}
-            className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.98]"
+            disabled={usage ? !usage.isUnlimited && (usage.limit - usage.used <= 0) : false}
+            className={`w-full py-3 px-4 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 ${
+              usage && !usage.isUnlimited && (usage.limit - usage.used <= 0)
+                ? 'bg-slate-700 text-gray-400 cursor-not-allowed shadow-none'
+                : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-indigo-500/25 hover:shadow-indigo-500/40'
+            }`}
           >
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={result || error ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" : "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"} />
-              </svg>
-              <span>{result || error ? 'Rescan Page' : 'Scan for Misinformation'}</span>
-            </div>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={result || error ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" : "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"} />
+            </svg>
+            <span>
+              {usage && !usage.isUnlimited && (usage.limit - usage.used <= 0) 
+                ? 'Daily Limit Reached' 
+                : (result || error ? 'Rescan Page' : 'Scan for Misinformation')}
+            </span>
           </button>
         </div>
       )}
