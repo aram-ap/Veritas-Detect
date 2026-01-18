@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { TrustDial } from './components/TrustDial';
 import { FlaggedContent, type FlaggedSnippet } from './components/FlaggedContent';
+import { LoadingAnalysis } from './components/LoadingAnalysis';
+import { readSSEStream } from './utils/sse-parser';
 import { API_ENDPOINTS, COOKIE_CONFIG, API_BASE_URL } from './config';
 import './index.css';
 
@@ -29,6 +31,12 @@ function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [clearingData, setClearingData] = useState(false);
   const [usage, setUsage] = useState<{ used: number; limit: number; tier: string; isUnlimited: boolean } | null>(null);
+
+  // Streaming state
+  const [streamingProgress, setStreamingProgress] = useState<number>(0);
+  const [streamingStatus, setStreamingStatus] = useState<string>('');
+  const [partialResult, setPartialResult] = useState<Partial<AnalysisResult> | null>(null);
+  const [streamingSnippets, setStreamingSnippets] = useState<FlaggedSnippet[]>([]);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -318,6 +326,11 @@ function App() {
     setAnalyzing(true);
     setError(null);
     setResult(null);
+    // Reset streaming state
+    setStreamingProgress(0);
+    setStreamingStatus('');
+    setPartialResult(null);
+    setStreamingSnippets([]);
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -365,10 +378,10 @@ function App() {
         throw new Error('Analysis cancelled');
       }
 
-      console.log('[Veritas] Sending text to API:', response.text.substring(0, 100) + '...');
+      console.log('[Veritas] Sending text to streaming API:', response.text.substring(0, 100) + '...');
 
-      // Send analyze request with credentials (browser automatically includes httpOnly cookies)
-      const analyzeRes = await fetch(API_ENDPOINTS.ANALYZE, {
+      // Send streaming analyze request with credentials
+      const analyzeRes = await fetch(API_ENDPOINTS.ANALYZE_STREAM, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -387,32 +400,101 @@ function App() {
         if (analyzeRes.status === 401) {
           throw new Error('Session expired. Please sign in again.');
         }
+        if (analyzeRes.status === 429) {
+          const errorData = await analyzeRes.json();
+          throw new Error(errorData.message || 'Daily limit reached');
+        }
         throw new Error('Analysis failed');
       }
 
-      const data = await analyzeRes.json();
-      console.log('[Veritas] API Response:', data); // Debug log
-      setResult(data);
+      // Check for streaming response
+      if (!analyzeRes.body) {
+        throw new Error('Streaming not supported');
+      }
+
+      const reader = analyzeRes.body.getReader();
+      let finalResult: AnalysisResult | null = null;
+
+      // Read SSE stream
+      await readSSEStream(
+        reader,
+        (event) => {
+          // Handle each SSE event
+          console.log('[Veritas] SSE Event:', event.type, event);
+
+          switch (event.type) {
+            case 'status':
+              setStreamingProgress(event.progress || 0);
+              setStreamingStatus(event.message || '');
+              break;
+
+            case 'partial':
+              setPartialResult({
+                score: event.trust_score,
+                bias: event.bias,
+                flagged_snippets: []
+              });
+              break;
+
+            case 'snippet':
+              if (event.snippet) {
+                setStreamingSnippets((prev) => [...prev, event.snippet]);
+              }
+              break;
+
+            case 'complete':
+              if (event.result) {
+                finalResult = event.result as AnalysisResult;
+                console.log('[Veritas] Analysis complete:', finalResult);
+              }
+              break;
+
+            case 'error':
+              throw new Error(event.message || 'Streaming error');
+          }
+        },
+        () => {
+          // Stream completed successfully
+          console.log('[Veritas] Stream completed');
+        },
+        (error) => {
+          // Stream error
+          console.error('[Veritas] Stream error:', error);
+          throw error;
+        }
+      );
+
+      // Check if we got a final result
+      if (!finalResult) {
+        throw new Error('No result received from stream');
+      }
+
+      // Store in typed const for TypeScript
+      const analysisResult: AnalysisResult = finalResult;
+
+      // Set the final result
+      setResult(analysisResult);
 
       // Cache the result locally for this URL
       if (tab.url) {
-        chrome.storage.local.set({ [tab.url]: data });
+        chrome.storage.local.set({ [tab.url]: analysisResult });
 
         // Also save highlights separately for persistence across reloads
-        if (data.flagged_snippets && data.flagged_snippets.length > 0) {
+        if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0) {
           const highlightKey = `highlights_${tab.url}`;
-          chrome.storage.local.set({ [highlightKey]: data.flagged_snippets });
+          chrome.storage.local.set({ [highlightKey]: analysisResult.flagged_snippets });
         }
       }
 
       // Send highlights to content script (non-blocking, don't await)
-      if (data.flagged_snippets && data.flagged_snippets.length > 0 && tab.id) {
+      if (analysisResult.flagged_snippets && analysisResult.flagged_snippets.length > 0 && tab.id) {
+        const snippetsToHighlight = analysisResult.flagged_snippets;
         // Use setTimeout to make this truly non-blocking
         setTimeout(async () => {
           try {
             await chrome.tabs.sendMessage(tab.id!, {
               action: 'HIGHLIGHT_SNIPPETS',
-              snippets: data.flagged_snippets
+              snippets: snippetsToHighlight
             });
             console.log('[Veritas] Sent highlights to content script');
           } catch (highlightError) {
@@ -420,6 +502,9 @@ function App() {
           }
         }, 100); // Small delay to ensure UI updates first
       }
+
+      // Update usage after successful analysis
+      await checkAuth(); // Refresh auth to get updated usage
     } catch (err) {
       // Don't show error if analysis was cancelled
       if (err instanceof Error && err.name === 'AbortError') {
@@ -437,6 +522,10 @@ function App() {
       }
     } finally {
       setAnalyzing(false);
+      setStreamingProgress(0);
+      setStreamingStatus('');
+      setPartialResult(null);
+      setStreamingSnippets([]);
       abortControllerRef.current = null;
     }
   };
@@ -633,22 +722,15 @@ function App() {
         )}
 
         {analyzing && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 animate-fade-in">
-            <div className="relative">
-              <div className="w-20 h-20 border-4 border-indigo-500/20 rounded-full" />
-              <div className="absolute inset-0 w-20 h-20 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-            <div className="text-center">
-              <p className="text-white font-medium animate-pulse">Analyzing Content</p>
-              <p className="text-sm text-gray-400 mt-1">Checking for misinformation...</p>
-            </div>
-            <button
-              onClick={handleCancel}
-              className="mt-4 px-4 py-2 text-sm font-medium text-white bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
+          <LoadingAnalysis
+            progress={streamingProgress}
+            statusMessage={streamingStatus}
+            partialTrustScore={partialResult?.score}
+            partialLabel={partialResult?.score !== undefined ? (partialResult.score >= 70 ? 'trustworthy' : partialResult.score >= 40 ? 'questionable' : 'unreliable') : undefined}
+            partialBias={partialResult?.bias}
+            streamingSnippets={streamingSnippets}
+            onCancel={handleCancel}
+          />
         )}
 
         {error && (

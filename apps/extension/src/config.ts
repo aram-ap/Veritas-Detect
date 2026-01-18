@@ -21,9 +21,10 @@ export const API_ENDPOINTS = {
   AUTH_EXTENSION_TOKEN: `${API_BASE_URL}/api/auth/extension-token`,
   AUTH_LOGIN: `${API_BASE_URL}/api/auth/login`,
   AUTH_LOGOUT: `${API_BASE_URL}/api/auth/logout`,
-  
-  // Analysis endpoint
+
+  // Analysis endpoints
   ANALYZE: `${API_BASE_URL}/api/analyze`,
+  ANALYZE_STREAM: `${API_BASE_URL}/api/analyze/stream`,
 };
 
 // Cookie configuration
